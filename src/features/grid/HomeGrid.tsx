@@ -32,9 +32,12 @@ function DragOverlay({ metrics, origin, intent }: {
   const target = rectToPixels(metrics, intent.target);
   return <>
     <div className="drag-origin-slot" aria-hidden="true" style={slot} />
-    <div className={`drag-target drag-target--${intent.kind}`} style={target} role="status" aria-live="polite">
-      <span className="drag-target__label">{dropIntentKindLabel(intent)}</span>
-    </div>
+    <div className={`drag-target drag-target--${intent.kind}`} style={target} />
+    {/* The label is a sibling, not a child: the carried item sits above the
+        outline, so a nested label would be covered by the icon it describes. */}
+    <span className="drag-target__label" style={{ left: target.left, top: target.top }} role="status" aria-live="polite">
+      {dropIntentKindLabel(intent)}
+    </span>
   </>;
 }
 
@@ -90,21 +93,29 @@ export function HomeGrid({ workspace, columns, editMode, onChooseSearchEngine, o
       data-drag-intent={drag.intent?.kind}
       {...drag.handlers}
     >
-      {items.map((item) => (
-        <div
-          key={item.instanceId}
-          className={`grid-item grid-item--${item.instanceId.replaceAll('.', '-')} ${item.kind === 'widget' ? 'grid-item--widget' : 'grid-item--shortcut'} ${item.instanceId === dragging ? 'grid-item--dragging' : ''}`}
-          style={{ gridColumn: `${item.x + 1} / span ${item.w}`, gridRow: `${item.y + 1} / span ${item.h}` }}
-          data-instance-id={item.instanceId}
-          data-grid-x={item.x} data-grid-y={item.y} data-grid-w={item.w} data-grid-h={item.h}
-          data-locked={item.locked ? 'true' : undefined}
-          tabIndex={editMode && !item.locked ? 0 : undefined}
-          onKeyDown={editMode ? keyboard.onKeyDown : undefined}
-        >
-          {renderItem(item)}
-          {editMode && item.kind === 'widget' && <span className="grid-item__edit-badge" title={item.locked ? '已锁定，不能拖动' : '拖动可移动'}>{item.locked ? '已锁定' : '组件'}</span>}
-        </div>
-      ))}
+      {items.map((item) => {
+        // The lifted element is pinned to its origin cell while the preview is
+        // free to rearrange everything else. Without this the preview's new
+        // grid position and the pointer transform would stack, putting the
+        // element one cell away from the pointer.
+        const placement = item.instanceId === dragging && drag.origin ? drag.origin : item;
+        return (
+          <div
+            key={item.instanceId}
+            className={`grid-item grid-item--${item.instanceId.replaceAll('.', '-')} ${item.kind === 'widget' ? 'grid-item--widget' : 'grid-item--shortcut'} ${item.instanceId === dragging ? 'grid-item--dragging' : ''}`}
+            style={{ gridColumn: `${placement.x + 1} / span ${placement.w}`, gridRow: `${placement.y + 1} / span ${placement.h}` }}
+            data-instance-id={item.instanceId}
+            data-grid-x={item.x} data-grid-y={item.y} data-grid-w={item.w} data-grid-h={item.h}
+            data-dragging-pinned={item.instanceId === dragging && drag.origin ? 'true' : undefined}
+            data-locked={item.locked ? 'true' : undefined}
+            tabIndex={editMode && !item.locked ? 0 : undefined}
+            onKeyDown={editMode ? keyboard.onKeyDown : undefined}
+          >
+            {renderItem(item)}
+            {editMode && item.kind === 'widget' && <span className="grid-item__edit-badge" title={item.locked ? '已锁定，不能拖动' : '拖动可移动'}>{item.locked ? '已锁定' : '组件'}</span>}
+          </div>
+        );
+      })}
       {drag.metrics && drag.origin && drag.intent && <DragOverlay metrics={drag.metrics} origin={drag.origin} intent={drag.intent} />}
     </div>
   );

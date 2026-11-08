@@ -4,6 +4,13 @@ import fs from 'node:fs/promises';
 
 export const extensionPath = path.resolve('.output/chrome-mv3');
 
+/**
+ * Screenshots go to a local scratch directory instead of the project, so a
+ * long visual-regression run cannot bloat the repo or fill remote file storage.
+ * Override with GLASS_HOME_SHOTS when a run needs a different location.
+ */
+export const shotsDir = process.env.GLASS_HOME_SHOTS ?? '/tmp/glass-home-shots';
+
 export async function launchExtension(existingUserDataDir?: string) {
   const userDataDir = existingUserDataDir ?? await fs.mkdtemp(path.join(process.cwd(), 'artifacts', 'edge-profile-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
@@ -68,7 +75,11 @@ export async function captureViewport(page: Page, filename: string): Promise<voi
   const session = await page.context().newCDPSession(page);
   try {
     const image = await session.send('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false });
-    await fs.writeFile(path.join('artifacts', filename), Buffer.from(image.data, 'base64'));
+    await fs.mkdir(shotsDir, { recursive: true });
+    const target = path.join(shotsDir, filename);
+    await fs.writeFile(target, Buffer.from(image.data, 'base64'));
+    // Echoed by the reporter so a run always says where the evidence landed.
+    console.log(`[shot] ${target}`);
   } finally {
     await session.detach();
   }

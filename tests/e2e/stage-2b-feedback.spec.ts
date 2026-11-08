@@ -42,9 +42,24 @@ test('drag feedback is actually painted, sized and themed per intent', async () 
         height: rect.height,
         borderStyle: style.borderTopStyle,
         borderWidth: style.borderTopWidth,
-        label: node.querySelector('.drag-target__label')?.textContent ?? '',
         percentLeft: style.left,
         display: style.display,
+      };
+    });
+    // The label is a sibling of the outline now, so it must be read separately.
+    const swapLabel = await page.locator('.drag-target__label').evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      // What element is actually painted at the label's own centre? If the
+      // carried icon covers it, hit-testing returns the icon, not the label.
+      const atCentre = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return {
+        text: node.textContent ?? '',
+        zIndex: Number(style.zIndex),
+        opacity: Number(style.opacity),
+        width: rect.width,
+        topmostClass: atCentre?.className?.toString?.() ?? '',
+        coveredByIcon: atCentre?.closest?.('[data-instance-id]') != null,
       };
     });
     // Painted, non-zero, and labelled as a swap.
@@ -53,7 +68,12 @@ test('drag feedback is actually painted, sized and themed per intent', async () 
     expect(swap.width).toBeGreaterThan(20);
     expect(swap.height).toBeGreaterThan(20);
     expect(swap.borderStyle).toBe('solid');
-    expect(swap.label).toBe('交换');
+    expect(swapLabel.text).toBe('交换');
+    expect(swapLabel.opacity).toBeGreaterThan(0);
+    expect(swapLabel.width).toBeGreaterThan(10);
+    // This assertion is the regression guard for the label being buried under
+    // the carried icon: it must be the topmost painted element at its centre.
+    expect(swapLabel.coveredByIcon).toBe(false);
 
     // The lifted slot is also painted, and it sits on the origin cell.
     const slot = await page.locator('.drag-origin-slot').evaluate((node) => {
@@ -100,12 +120,17 @@ test('drag feedback is actually painted, sized and themed per intent', async () 
     const insert = await page.locator('.drag-target').evaluate((node) => ({
       kind: node.className,
       borderStyle: getComputedStyle(node).borderTopStyle,
-      label: node.querySelector('.drag-target__label')?.textContent ?? '',
       hasAccent: getComputedStyle(node, '::before').height !== 'auto',
     }));
+    const insertLabel = await page.locator('.drag-target__label').evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const atCentre = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return { text: node.textContent ?? '', coveredByIcon: atCentre?.closest?.('[data-instance-id]') != null };
+    });
     expect(insert.kind).toContain('drag-target--insert');
     expect(insert.borderStyle).toBe('dashed');
-    expect(insert.label).toBe('插入推挤');
+    expect(insertLabel.text).toBe('插入推挤');
+    expect(insertLabel.coveredByIcon).toBe(false);
     expect(insert.hasAccent).toBe(true);
     await page.keyboard.press('Escape');
 
