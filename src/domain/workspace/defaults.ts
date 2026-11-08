@@ -43,16 +43,21 @@ export function createDefaultLayouts(shortcuts: readonly Shortcut[]): Record<Gri
       add('builtin.clock', 0, 0, 6, 2, 0);
       add('builtin.calendar', 6, 0, 4, 2, 1);
       add('builtin.search', 0, 2, 6, 1, 2);
+      add('builtin.todo', 6, 2, 4, 2, 3);
     } else if (columns === 8) {
       add('builtin.clock', 0, 0, 4, 2, 0);
       add('builtin.calendar', 4, 0, 4, 2, 1);
       add('builtin.search', 0, 2, 6, 1, 2);
+      add('builtin.todo', 6, 2, 2, 2, 3);
     } else {
+      // 5 columns: calendar needs at least 4 wide, so it keeps its own row and
+      // the to-do widget takes the free 2x2 block beside the search row's tail.
       add('builtin.clock', 0, 0, 5, 2, 0);
       add('builtin.search', 0, 2, 5, 1, 1);
       add('builtin.calendar', 0, 3, 4, 2, 2);
+      add('builtin.todo', 0, 5, 2, 2, 3);
     }
-    const firstShortcutRow = columns === 5 ? 5 : 3;
+    const firstShortcutRow = columns === 5 ? 7 : 4;
     shortcuts.forEach((shortcut, index) => {
       add(shortcut.id, index % columns, firstShortcutRow + Math.floor(index / columns), 1, 1, index + 3);
     });

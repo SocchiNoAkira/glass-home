@@ -12,12 +12,14 @@ function shortcut(id = 'new-shortcut'): Shortcut {
 describe('Workspace schema and commands', () => {
   it('places every builtin component and shortcut in all three breakpoint layouts', () => {
     const workspace = createDefaultWorkspace();
-    expect(workspace.shortcuts).toHaveLength(20);
+    // Derived rather than hard-coded: adding a builtin widget must not require
+    // editing three magic numbers across the suite.
+    const expectedItems = workspace.shortcuts.length + workspace.widgets.length;
     for (const columns of GRID_BREAKPOINTS) {
       const layout = workspace.layouts[columns];
-      expect(layout).toHaveLength(23);
+      expect(layout).toHaveLength(expectedItems);
       expect(isValidLayout(layout, columns)).toBe(true);
-      for (const id of ['builtin.clock', 'builtin.search', 'builtin.calendar']) {
+      for (const id of ['builtin.clock', 'builtin.search', 'builtin.calendar', 'builtin.todo']) {
         expect(layout.find((item) => item.instanceId === id)?.kind).toBe('widget');
       }
     }
@@ -26,6 +28,7 @@ describe('Workspace schema and commands', () => {
 
   it('adds, edits, duplicates and removes an independent shortcut through commands', () => {
     const original = createDefaultWorkspace();
+    const expectedItems = original.shortcuts.length + original.widgets.length;
     const added = addShortcut(original, shortcut());
     expect(added.revision).toBe(1);
     for (const columns of GRID_BREAKPOINTS) expect(isValidLayout(added.layouts[columns], columns)).toBe(true);
@@ -33,7 +36,7 @@ describe('Workspace schema and commands', () => {
     expect(updated.shortcuts.find((item) => item.id === 'new-shortcut')?.title).toBe('Renamed');
     const removed = removeShortcut(updated, 'new-shortcut');
     expect(removed.shortcuts).toHaveLength(20);
-    for (const columns of GRID_BREAKPOINTS) expect(removed.layouts[columns]).toHaveLength(23);
+    for (const columns of GRID_BREAKPOINTS) expect(removed.layouts[columns]).toHaveLength(expectedItems);
     expect(original.revision).toBe(0);
   });
 

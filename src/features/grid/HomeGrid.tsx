@@ -6,10 +6,10 @@ import type { GridMetrics } from '@/src/domain/interaction/dragGeometry';
 import { cellStrideX, cellStrideY } from '@/src/domain/interaction/dragGeometry';
 import type { DropIntent } from '@/src/domain/interaction/dragIntent';
 import { dropIntentKindLabel } from '@/src/domain/interaction/dragIntent';
-import { ClockWidget } from '@/src/features/clock/ClockWidget';
-import { CalendarWidget } from '@/src/features/calendar/CalendarWidget';
-import { SearchWidget } from '@/src/features/search/SearchWidget';
+import type { WidgetEnvironment } from '@/src/domain/widget/environment';
+import type { WidgetStorage } from '@/src/infrastructure/persistence/widgetStorage';
 import { ShortcutIcon } from '@/src/features/shortcuts/ShortcutIcon';
+import { WidgetHost } from '@/src/features/widget/WidgetHost';
 import { useGridDrag } from './useGridDrag';
 import { useGridKeyboard } from './useGridKeyboard';
 
@@ -41,10 +41,13 @@ function DragOverlay({ metrics, origin, intent }: {
   </>;
 }
 
-export function HomeGrid({ workspace, columns, editMode, onChooseSearchEngine, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout }: {
+export function HomeGrid({ workspace, columns, editMode, environment, widgetStorage, onChooseSearchEngine, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout, onWidgetError }: {
   readonly workspace: Workspace;
   readonly columns: GridColumns;
   readonly editMode: boolean;
+  /** Host-level widget environment (theme, language, motion, material). */
+  readonly environment: Omit<WidgetEnvironment, 'size'>;
+  readonly widgetStorage: WidgetStorage | undefined;
   readonly onChooseSearchEngine: () => void;
   readonly onEditShortcut: (shortcut: Shortcut) => void;
   readonly onDuplicateShortcut: (shortcut: Shortcut) => void;
@@ -52,6 +55,7 @@ export function HomeGrid({ workspace, columns, editMode, onChooseSearchEngine, o
   readonly onPreviewLayout: (columns: GridColumns, command: LayoutCommand, preference?: LayoutPreference) => boolean;
   readonly onCommitLayout: () => Promise<void>;
   readonly onCancelLayout: () => void;
+  readonly onWidgetError: (instanceId: string, message: string) => void;
 }) {
   const shortcuts = new Map(workspace.shortcuts.map((shortcut) => [shortcut.id, shortcut]));
   const items = readingOrder(workspace.layouts[columns]);
@@ -72,9 +76,18 @@ export function HomeGrid({ workspace, columns, editMode, onChooseSearchEngine, o
   });
 
   const renderItem = (item: LayoutItem) => {
-    if (item.instanceId === 'builtin.clock') return <ClockWidget settings={workspace.settings} />;
-    if (item.instanceId === 'builtin.search') return <SearchWidget settings={workspace.settings} onChooseEngine={onChooseSearchEngine} />;
-    if (item.instanceId === 'builtin.calendar') return <CalendarWidget settings={workspace.settings} />;
+    // Widgets go through the host so error isolation and the environment
+    // handoff are identical for every built-in, including the to-do widget.
+    if (item.kind === 'widget') {
+      return <WidgetHost
+        item={item}
+        workspace={workspace}
+        environment={{ ...environment, size: { w: item.w, h: item.h } }}
+        storage={widgetStorage}
+        onChooseSearchEngine={onChooseSearchEngine}
+        onWidgetError={onWidgetError}
+      />;
+    }
     const shortcut = shortcuts.get(item.instanceId);
     if (!shortcut) return <div className="grid-error" role="alert">快捷方式数据缺失</div>;
     return <ShortcutIcon shortcut={shortcut} editMode={editMode} onEdit={onEditShortcut} onDuplicate={onDuplicateShortcut} onRemove={onRemoveShortcut} />;

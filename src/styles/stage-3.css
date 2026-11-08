@@ -1,0 +1,173 @@
+/* Stage 3: built-in widget surfaces. The to-do widget owns its own panel so it
+   never borrows the calendar's padding or the clock's centring. */
+
+/* Host frame: fills the grid cell and keeps the widget's own layout inside. */
+.widget-frame { width: 100%; height: 100%; min-width: 0; min-height: 0; display: flex; }
+.widget-frame__body { width: 100%; height: 100%; min-width: 0; min-height: 0; display: flex; }
+
+/* Error card keeps the grid cell instead of collapsing the layout (10.10). */
+.widget-error {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #ff9dab40;
+  border-radius: 18px;
+  background: #3a202a99;
+  color: #ffd9de;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+.widget-error__icon { flex-shrink: 0; opacity: .9; }
+.widget-error__text { flex: 1; min-width: 0; }
+.widget-error__text strong { display: block; font-size: 11px; font-weight: 550; }
+.widget-error__text p { margin: 3px 0 0; color: #ffc3cc; overflow-wrap: anywhere; }
+
+.widget-error__retry {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid #ff9dab66;
+  border-radius: 7px;
+  background: #ffffff12;
+  color: inherit;
+  font-size: 10px;
+}
+
+.widget-error__retry:hover { background: #ffffff20; }
+.widget-error__retry:focus-visible { outline: 2px solid #ffffffb3; outline-offset: 1px; }
+
+.todo-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 21px;
+  /* The panel is sized by its grid cell, so anything that does not fit must be
+     clipped or scrolled here rather than drawn over the icons below. */
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.todo-widget__summary { color: var(--text-muted); font-size: 10px; letter-spacing: .3px; }
+
+.todo-widget__composer { display: flex; align-items: center; gap: 6px; }
+
+.todo-widget__input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #ffffff26;
+  border-radius: 9px;
+  background: #ffffff0e;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.todo-widget__input::placeholder { color: var(--text-muted); }
+.todo-widget__input:focus-visible { border-color: #ffffff80; outline: none; box-shadow: 0 0 0 2px #ffffff1f; }
+.todo-widget__input:disabled { opacity: .6; }
+
+.todo-widget__add { width: 28px; height: 28px; flex-shrink: 0; }
+
+.todo-widget__list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.todo-widget__item { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+
+.todo-widget__checkbox {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent, #b9a6d8);
+  cursor: pointer;
+}
+
+.todo-widget__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-widget__item.is-done .todo-widget__text {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.todo-widget__remove {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 160ms ease, background 160ms ease;
+}
+
+/* Reveal the delete affordance on hover or keyboard focus, never only on hover
+   (a keyboard user must be able to reach it). */
+.todo-widget__item:hover .todo-widget__remove,
+.todo-widget__remove:focus-visible { opacity: 1; }
+.todo-widget__remove:focus-visible { background: #ffffff16; }
+.todo-widget__remove:hover { background: #ffffff1f; color: var(--text); }
+
+.todo-widget__empty { margin: 4px 0; color: var(--text-muted); font-size: 11px; line-height: 1.6; }
+
+.todo-widget__footer { display: flex; justify-content: flex-end; }
+/* Its own button styling: `.mini-button` is a fixed 28px square and cannot hold
+   a label, and inheriting the global `button` look rendered as a blank block on
+   this translucent surface. */
+.todo-widget__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid #ffffff24;
+  border-radius: 7px;
+  background: #ffffff0f;
+  color: var(--text-soft);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.todo-widget__clear:hover:not(:disabled) { background: #ffffff1c; color: var(--text); border-color: #ffffff3d; }
+.todo-widget__clear:focus-visible { outline: 2px solid #ffffffb3; outline-offset: 1px; }
+.todo-widget__clear:disabled { opacity: .38; }
+.reduced-motion .todo-widget__clear { transition: none; }
+
+.todo-widget__notice { margin: 0; color: #f0b8c0; font-size: 10px; line-height: 1.5; }
+
+/* Reduced motion must not remove the hover affordance, only its transition. */
+.reduced-motion .todo-widget__remove { transition: none; }
+
+@media (max-width: 719px) {
+  .todo-widget { padding: 10px 12px; gap: 6px; }
+  .todo-widget__summary { display: none; }
+}

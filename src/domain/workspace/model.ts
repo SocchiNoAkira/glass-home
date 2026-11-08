@@ -1,8 +1,10 @@
 import type { GridColumns, LayoutItem } from '@/src/domain/grid/model';
 
-export const WORKSPACE_SCHEMA_VERSION = 1;
+export const WORKSPACE_SCHEMA_VERSION = 2;
 export const DEFAULT_WORKSPACE_ID = 'glass-home-workspace';
-export const BUILTIN_WIDGET_IDS = ['builtin.clock', 'builtin.search', 'builtin.calendar'] as const;
+/** v2 adds the to-do widget, so stored v1 data must be migrated on load. */
+export const TODO_WIDGET_ID = 'builtin.todo';
+export const BUILTIN_WIDGET_IDS = ['builtin.clock', 'builtin.search', 'builtin.calendar', TODO_WIDGET_ID] as const;
 
 export type MaterialQuality = 'high' | 'balanced' | 'low' | 'off';
 export type ThemePreference = 'system' | 'light' | 'dark';

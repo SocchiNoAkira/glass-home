@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceRepository, type LoadWorkspaceResult } from '@/src/infrastructure/persistence/workspaceRepository';
 import { AssetRepository } from '@/src/infrastructure/persistence/assetRepository';
+import { WidgetStorage } from '@/src/infrastructure/persistence/widgetStorage';
 import type { Workspace, WorkspaceAsset } from '@/src/domain/workspace/model';
 import type { GridColumns } from '@/src/domain/grid/model';
 import { DEFAULT_SOLVE_BUDGET, solveLayout, type LayoutCommand, type LayoutPreference } from '@/src/domain/grid/solver';
@@ -18,8 +19,13 @@ export function getGridColumns(width: number): GridColumns {
 export function useWorkspace() {
   const repositoryRef = useRef<WorkspaceRepository | undefined>(undefined);
   const assetsRef = useRef<AssetRepository | undefined>(undefined);
+  const widgetStorageRef = useRef<WidgetStorage | undefined>(undefined);
   if (!repositoryRef.current) repositoryRef.current = new WorkspaceRepository();
   if (!assetsRef.current) assetsRef.current = new AssetRepository();
+  if (!widgetStorageRef.current) widgetStorageRef.current = new WidgetStorage();
+  // Widget storage connects lazily; `storageReady` flips once the connection is
+  // open so a widget never mounts against a half-initialised connection.
+  const [storageReady, setStorageReady] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>();
   const [loadError, setLoadError] = useState<string>();
   const [saveState, setSaveState] = useState<SaveState>('loading');
@@ -57,6 +63,8 @@ export function useWorkspace() {
       }
       updateWorkspace(result.workspace);
       setSaveState('saved');
+      // A v1 workspace upgraded on load is a real change the user should see.
+      if (result.migrated) setNotice('本地数据已升级：新增内置待办组件。');
       const assetId = result.workspace.settings.wallpaperAssetId;
       if (assetId) {
         const asset = await assetsRef.current?.get(assetId);
@@ -72,8 +80,24 @@ export function useWorkspace() {
       operationRef.current += 1;
       repositoryRef.current?.close();
       assetsRef.current?.close();
+      widgetStorageRef.current?.close();
     };
   }, [updateWorkspace]);
+
+  // Widget storage shares the IndexedDB connection pool but has its own store.
+  // Opening it separately keeps a widget failure from blocking the workspace.
+  useEffect(() => {
+    mountedRef.current = true;
+    let cancelled = false;
+    void widgetStorageRef.current?.open()
+      .then(() => { if (!cancelled) setStorageReady(true); })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        // Widgets degrade to an error card; the main screen keeps working.
+        setNotice(error instanceof Error ? `组件存储不可用：${error.message}` : '组件存储不可用。');
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const onResize = () => setColumns(getGridColumns(window.innerWidth));
@@ -257,6 +281,7 @@ export function useWorkspace() {
 
   return {
     workspace, repository: repositoryRef.current, assets: assetsRef.current,
+    widgetStorage: storageReady ? widgetStorageRef.current : undefined,
     loadError, saveState, saveError, notice, columns, wallpaperUrl,
     commit, commitImport, reset, changeWallpaper, reportError, clearError,
     displayWorkspace, preview, previewLayout, cancelLayoutPreview, commitLayoutPreview,

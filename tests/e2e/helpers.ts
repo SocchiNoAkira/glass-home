@@ -87,8 +87,11 @@ export async function captureViewport(page: Page, filename: string): Promise<voi
 
 export async function readStoredWorkspace(page: Page): Promise<unknown> {
   return page.evaluate(async () => {
+    // Opening without a version picks up the current on-disk version, so the
+    // helper keeps working when the schema version moves (v2 -> v3 added the
+    // widget-data store).
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('glass-home', 2);
+      const request = indexedDB.open('glass-home');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });

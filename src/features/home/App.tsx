@@ -165,6 +165,13 @@ export function App() {
         <div className="home-content">
           {store.preview && <div className="layout-preview-banner" role="status">正在预览未保存的布局；按 Esc 取消。</div>}
           <HomeGrid workspace={store.displayWorkspace ?? workspace} columns={store.columns} editMode={editMode}
+            environment={{
+              theme: themeDark ? 'dark' : 'light',
+              language: document.documentElement.lang || 'zh-CN',
+              reducedMotion: workspace.settings.reducedMotion,
+              materialQuality: workspace.settings.materialQuality,
+            }}
+            widgetStorage={store.widgetStorage}
             onChooseSearchEngine={() => setSettingsTab('search')}
             onEditShortcut={setEditingShortcut}
             onDuplicateShortcut={duplicateShortcut}
@@ -172,6 +179,7 @@ export function App() {
             onPreviewLayout={store.previewLayout}
             onCommitLayout={store.commitLayoutPreview}
             onCancelLayout={store.cancelLayoutPreview}
+            onWidgetError={(_instanceId, message) => store.reportError(message)}
           />
           {workspace.shortcuts.length === 0 && <div className="empty-state glass-surface"><h2>从这里，开始你的空间</h2><p>还没有快捷方式。添加常用网站，让主屏幕更像你。</p><button className="button button--primary" onClick={() => setEditingShortcut(null)}><Plus size={16} />添加快捷方式</button></div>}
           {editMode && <LayoutInspector workspace={workspace} displayWorkspace={store.displayWorkspace ?? workspace} columns={store.columns} preview={store.preview} onPreview={store.previewLayout} onCancel={store.cancelLayoutPreview} onCommit={store.commitLayoutPreview} />}

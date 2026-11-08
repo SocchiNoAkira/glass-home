@@ -40,9 +40,14 @@ describe('deterministic layout solver', () => {
 
   it('returns a legal swap immediately even when pushing would exhaust the time budget', () => {
     const workspace = createDefaultWorkspace();
+    // Read the neighbour's cell from the layout instead of hard-coding a row:
+    // the default arrangement gains builtins over time and this assertion is
+    // about swap behaviour, not about where github happens to sit.
+    const figma = workspace.layouts[10].find((item) => item.instanceId === 'figma')!;
+    const target = { x: figma.x, y: figma.y, w: 1, h: 1 };
     const result = solveLayout({
       items: workspace.layouts[10], columns: 10,
-      command: { type: 'move', instanceId: 'github', target: { x: 1, y: 3, w: 1, h: 1 } },
+      command: { type: 'move', instanceId: 'github', target },
       budget: DEFAULT_SOLVE_BUDGET,
     });
     expect(result).toMatchObject({ status: 'ok', operation: 'swap' });
@@ -50,7 +55,7 @@ describe('deterministic layout solver', () => {
     expect(result.status === 'ok' && result.visitedNodes).toBe(0);
     expect(solveLayout({
       items: workspace.layouts[10], columns: 10,
-      command: { type: 'move', instanceId: 'github', target: { x: 1, y: 3, w: 1, h: 1 } },
+      command: { type: 'move', instanceId: 'github', target },
       budget: DEFAULT_SOLVE_BUDGET, preference: 'push-first',
     })).toMatchObject({ status: 'ok', operation: 'push' });
   });

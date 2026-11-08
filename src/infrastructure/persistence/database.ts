@@ -1,7 +1,8 @@
 const DATABASE_NAME = 'glass-home';
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 const WORKSPACE_STORE = 'workspaces';
 const ASSET_STORE = 'assets';
+const WIDGET_DATA_STORE = 'widget-data';
 
 export function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -21,10 +22,17 @@ export function transactionComplete(transaction: IDBTransaction): Promise<void> 
 export function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.addEventListener('upgradeneeded', () => {
+    request.addEventListener('upgradeneeded', (event) => {
       const database = request.result;
+      // Version 2 introduced assets; version 3 adds per-instance widget data.
+      // Both steps are additive, so an existing Workspace or asset store is
+      // never recreated and no user data can be lost by the upgrade.
+      const previous = event.oldVersion;
       if (!database.objectStoreNames.contains(WORKSPACE_STORE)) database.createObjectStore(WORKSPACE_STORE, { keyPath: 'workspaceId' });
       if (!database.objectStoreNames.contains(ASSET_STORE)) database.createObjectStore(ASSET_STORE, { keyPath: 'id' });
+      if (!database.objectStoreNames.contains(WIDGET_DATA_STORE) && previous < 3) {
+        database.createObjectStore(WIDGET_DATA_STORE, { keyPath: 'key' });
+      }
     });
     request.addEventListener('success', () => {
       const database = request.result;
@@ -44,4 +52,9 @@ export function workspaceStore(database: IDBDatabase, mode: IDBTransactionMode):
 export function assetStore(database: IDBDatabase, mode: IDBTransactionMode): { transaction: IDBTransaction; store: IDBObjectStore } {
   const transaction = database.transaction(ASSET_STORE, mode);
   return { transaction, store: transaction.objectStore(ASSET_STORE) };
+}
+
+export function widgetDataStore(database: IDBDatabase, mode: IDBTransactionMode): { transaction: IDBTransaction; store: IDBObjectStore } {
+  const transaction = database.transaction(WIDGET_DATA_STORE, mode);
+  return { transaction, store: transaction.objectStore(WIDGET_DATA_STORE) };
 }

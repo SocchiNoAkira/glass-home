@@ -6,7 +6,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: 'stage-[12]*.spec.ts',
+  testMatch: 'stage-[123]*.spec.ts',
   fullyParallel: false,
   workers: 1,
   timeout: 45_000,

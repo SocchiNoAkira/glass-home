@@ -5,7 +5,7 @@ import { applyLayoutTransaction, createLayoutPreview, restoreLayoutTransaction }
 import { LayoutHistory, LayoutPreviewCoordinator } from '@/src/application/layoutHistory';
 
 function movePreview(workspace = createDefaultWorkspace()) {
-  const command = { type: 'move' as const, instanceId: 'github', target: { x: 7, y: 2, w: 1, h: 1 } };
+  const command = { type: 'move' as const, instanceId: 'github', target: { x: 7, y: 3, w: 1, h: 1 } };
   const result = solveLayout({ columns: 10, items: workspace.layouts[10], command, preference: 'push-first', budget: { maxNodes: 5000, maxMs: 40, maxAffectedItems: 40 } });
   const preview = createLayoutPreview(workspace, 10, command, result, 'transaction-1');
   if (preview.status !== 'ready') throw new Error(preview.reason);
@@ -15,8 +15,11 @@ function movePreview(workspace = createDefaultWorkspace()) {
 describe('layout transaction and history', () => {
   it('previews without mutating the saved Workspace, then commits one snapshot', () => {
     const workspace = createDefaultWorkspace();
+    // The starting cell comes from the layout: adding builtins moves the
+    // shortcut rows, and this assertion is about transaction behaviour.
+    const origin = workspace.layouts[10].find((item) => item.instanceId === 'github')!;
     const transaction = movePreview(workspace);
-    expect(workspace.layouts[10].find((item) => item.instanceId === 'github')).toMatchObject({ x: 0, y: 3 });
+    expect(workspace.layouts[10].find((item) => item.instanceId === 'github')).toMatchObject({ x: origin.x, y: origin.y });
     expect(workspace.revision).toBe(0);
     const committed = applyLayoutTransaction(workspace, transaction);
     expect(committed.revision).toBe(1);

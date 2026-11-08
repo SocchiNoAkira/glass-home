@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { openDatabase, requestResult, transactionComplete, workspaceStore } from './database';
 import { createDefaultWorkspace } from '@/src/domain/workspace/defaults';
-import { DEFAULT_WORKSPACE_ID, type Workspace, type WorkspaceAsset } from '@/src/domain/workspace/model';
+import { DEFAULT_WORKSPACE_ID, WORKSPACE_SCHEMA_VERSION, type Workspace, type WorkspaceAsset } from '@/src/domain/workspace/model';
+import { normalizeWorkspace } from '@/src/domain/workspace/migration';
 import { validateWorkspace } from '@/src/domain/workspace/schema';
 
 export type LoadWorkspaceResult =
-  | { status: 'ready'; workspace: Workspace }
+  | { status: 'ready'; workspace: Workspace; migrated?: boolean }
   | { status: 'recovery-required'; message: string };
 
 function storageError(error: unknown): Error {
@@ -31,7 +32,17 @@ export class WorkspaceRepository {
       return { status: 'ready', workspace };
     }
     try {
-      return { status: 'ready', workspace: validateWorkspace(stored) };
+      // Upgrade before validating: a v1 payload does not contain the to-do
+      // widget, so the v2 validator would reject it and send an existing user
+      // into the recovery screen. The migrated result is written back so the
+      // upgrade only has to happen once.
+      const normalised = normalizeWorkspace(stored, WORKSPACE_SCHEMA_VERSION);
+      if (!normalised.ok) return { status: 'recovery-required', message: normalised.reason };
+      const workspace = validateWorkspace(normalised.workspace);
+      if (normalised.migrated) await this.commit(workspace);
+      return normalised.migrated
+        ? { status: 'ready', workspace, migrated: true }
+        : { status: 'ready', workspace };
     } catch (error) {
       return {
         status: 'recovery-required',
