@@ -26,6 +26,8 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // An uncommitted drag consumes Esc first (product baseline 7.2); the grid
+      // handles that in the capture phase, so this only sees previews.
       if (event.key === 'Escape' && store.preview) {
         event.preventDefault();
         store.cancelLayoutPreview();
@@ -34,6 +36,27 @@ export function App() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [store.preview, store.cancelLayoutPreview]);
+
+  // Ctrl/Cmd+Z undo and Ctrl/Cmd+Shift+Z redo (product baseline 7.3). Text
+  // fields keep their own undo stack, so they are skipped.
+  useEffect(() => {
+    const isTextEntry = (target: EventTarget | null) =>
+      (target as Element | null)?.closest?.('input, textarea, [contenteditable="true"]') != null;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+      if (isTextEntry(event.target)) return;
+      // A preview owns the layout right now; undo/redo buttons are disabled too.
+      if (store.preview) return;
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (store.canRedo) void store.redoLayout().catch((error: unknown) => store.reportError(error instanceof Error ? error.message : '重做失败。'));
+        return;
+      }
+      if (store.canUndo) void store.undoLayout().catch((error: unknown) => store.reportError(error instanceof Error ? error.message : '撤销失败。'));
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [store.preview, store.canUndo, store.canRedo, store.undoLayout, store.redoLayout, store.reportError]);
 
   const importWorkspace = async (file: File) => {
     setBusy(true);
@@ -146,13 +169,16 @@ export function App() {
             onEditShortcut={setEditingShortcut}
             onDuplicateShortcut={duplicateShortcut}
             onRemoveShortcut={setRemovingShortcut}
+            onPreviewLayout={store.previewLayout}
+            onCommitLayout={store.commitLayoutPreview}
+            onCancelLayout={store.cancelLayoutPreview}
           />
           {workspace.shortcuts.length === 0 && <div className="empty-state glass-surface"><h2>从这里，开始你的空间</h2><p>还没有快捷方式。添加常用网站，让主屏幕更像你。</p><button className="button button--primary" onClick={() => setEditingShortcut(null)}><Plus size={16} />添加快捷方式</button></div>}
           {editMode && <LayoutInspector workspace={workspace} displayWorkspace={store.displayWorkspace ?? workspace} columns={store.columns} preview={store.preview} onPreview={store.previewLayout} onCancel={store.cancelLayoutPreview} onCommit={store.commitLayoutPreview} />}
         </div>
       </main>
       <footer className="bottom-bar">
-        <div className="bottom-bar__left"><Sparkles size={14} /><span>{editMode ? '目标格预览与撤销已可用；自由拖放将在下一阶段开放。' : '少一点干扰，多一点专注。'}</span></div>
+        <div className="bottom-bar__left"><Sparkles size={14} /><span>{editMode ? '拖动图标或组件即可调整布局；选中后方向键微调，Alt+方向键改尺寸。' : '少一点干扰，多一点专注。拖动图标可调整布局。'}</span></div>
         <div className="bottom-bar__right">
           {!editMode ? <button className="edit-button glass-control" onClick={() => setEditMode(true)}><LayoutGrid size={15} />编辑主屏幕</button> : <button className="done-button" onClick={() => setEditMode(false)}><Check size={16} />完成</button>}
           <button className="icon-button add-button" aria-label="添加快捷方式" title="添加快捷方式" onClick={() => setEditingShortcut(null)}><Plus size={20} /></button>

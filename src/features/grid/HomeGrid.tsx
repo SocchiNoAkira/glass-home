@@ -1,12 +1,44 @@
-import type { LayoutItem, GridColumns } from '@/src/domain/grid/model';
+import type { GridColumns, LayoutItem } from '@/src/domain/grid/model';
 import { readingOrder } from '@/src/domain/grid/model';
 import type { Shortcut, Workspace } from '@/src/domain/workspace/model';
+import type { LayoutCommand, LayoutPreference } from '@/src/domain/grid/solver';
+import type { GridMetrics } from '@/src/domain/interaction/dragGeometry';
+import { cellStrideX, cellStrideY } from '@/src/domain/interaction/dragGeometry';
+import type { DropIntent } from '@/src/domain/interaction/dragIntent';
+import { dropIntentKindLabel } from '@/src/domain/interaction/dragIntent';
 import { ClockWidget } from '@/src/features/clock/ClockWidget';
 import { CalendarWidget } from '@/src/features/calendar/CalendarWidget';
 import { SearchWidget } from '@/src/features/search/SearchWidget';
 import { ShortcutIcon } from '@/src/features/shortcuts/ShortcutIcon';
+import { useGridDrag } from './useGridDrag';
+import { useGridKeyboard } from './useGridKeyboard';
 
-export function HomeGrid({ workspace, columns, editMode, onChooseSearchEngine, onEditShortcut, onDuplicateShortcut, onRemoveShortcut }: {
+/** Absolute CSS pixel rectangle for one grid rect, derived from the one-off measurement. */
+function rectToPixels(metrics: GridMetrics, rect: Readonly<{ x: number; y: number; w: number; h: number }>) {
+  return {
+    left: metrics.padLeft + rect.x * cellStrideX(metrics),
+    top: metrics.padTop + rect.y * cellStrideY(metrics),
+    width: rect.w * metrics.cellWidth + Math.max(0, rect.w - 1) * metrics.gapX,
+    height: rect.h * metrics.rowHeight + Math.max(0, rect.h - 1) * metrics.gapY,
+  };
+}
+
+function DragOverlay({ metrics, origin, intent }: {
+  readonly metrics: GridMetrics;
+  readonly origin: Readonly<{ x: number; y: number; w: number; h: number }>;
+  readonly intent: DropIntent;
+}) {
+  const slot = rectToPixels(metrics, origin);
+  const target = rectToPixels(metrics, intent.target);
+  return <>
+    <div className="drag-origin-slot" aria-hidden="true" style={slot} />
+    <div className={`drag-target drag-target--${intent.kind}`} style={target} role="status" aria-live="polite">
+      <span className="drag-target__label">{dropIntentKindLabel(intent)}</span>
+    </div>
+  </>;
+}
+
+export function HomeGrid({ workspace, columns, editMode, onChooseSearchEngine, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout }: {
   readonly workspace: Workspace;
   readonly columns: GridColumns;
   readonly editMode: boolean;
@@ -14,9 +46,27 @@ export function HomeGrid({ workspace, columns, editMode, onChooseSearchEngine, o
   readonly onEditShortcut: (shortcut: Shortcut) => void;
   readonly onDuplicateShortcut: (shortcut: Shortcut) => void;
   readonly onRemoveShortcut: (shortcut: Shortcut) => void;
+  readonly onPreviewLayout: (columns: GridColumns, command: LayoutCommand, preference?: LayoutPreference) => boolean;
+  readonly onCommitLayout: () => Promise<void>;
+  readonly onCancelLayout: () => void;
 }) {
   const shortcuts = new Map(workspace.shortcuts.map((shortcut) => [shortcut.id, shortcut]));
   const items = readingOrder(workspace.layouts[columns]);
+
+  const drag = useGridDrag({
+    columns,
+    layout: items,
+    preview: onPreviewLayout,
+    commit: onCommitLayout,
+    cancel: onCancelLayout,
+  });
+
+  const keyboard = useGridKeyboard({
+    columns,
+    layout: items,
+    preview: onPreviewLayout,
+    commit: onCommitLayout,
+  });
 
   const renderItem = (item: LayoutItem) => {
     if (item.instanceId === 'builtin.clock') return <ClockWidget settings={workspace.settings} />;
@@ -27,25 +77,35 @@ export function HomeGrid({ workspace, columns, editMode, onChooseSearchEngine, o
     return <ShortcutIcon shortcut={shortcut} editMode={editMode} onEdit={onEditShortcut} onDuplicate={onDuplicateShortcut} onRemove={onRemoveShortcut} />;
   };
 
+  const dragging = drag.instanceId;
+
   return (
     <div
-      className={`unified-grid unified-grid--${columns} ${editMode ? 'unified-grid--editing' : ''}`}
+      ref={drag.gridRef}
+      className={`unified-grid unified-grid--${columns} ${editMode ? 'unified-grid--editing' : ''} ${dragging ? 'unified-grid--dragging' : ''}`}
       data-testid="unified-grid" data-columns={columns}
       style={{ '--grid-columns': columns } as React.CSSProperties}
       aria-label={`主屏幕统一网格，${columns} 列`}
+      data-drag-instance={dragging}
+      data-drag-intent={drag.intent?.kind}
+      {...drag.handlers}
     >
       {items.map((item) => (
         <div
           key={item.instanceId}
-          className={`grid-item grid-item--${item.instanceId.replaceAll('.', '-')} ${item.kind === 'widget' ? 'grid-item--widget' : 'grid-item--shortcut'}`}
+          className={`grid-item grid-item--${item.instanceId.replaceAll('.', '-')} ${item.kind === 'widget' ? 'grid-item--widget' : 'grid-item--shortcut'} ${item.instanceId === dragging ? 'grid-item--dragging' : ''}`}
           style={{ gridColumn: `${item.x + 1} / span ${item.w}`, gridRow: `${item.y + 1} / span ${item.h}` }}
           data-instance-id={item.instanceId}
           data-grid-x={item.x} data-grid-y={item.y} data-grid-w={item.w} data-grid-h={item.h}
+          data-locked={item.locked ? 'true' : undefined}
+          tabIndex={editMode && !item.locked ? 0 : undefined}
+          onKeyDown={editMode ? keyboard.onKeyDown : undefined}
         >
           {renderItem(item)}
-          {editMode && item.kind === 'widget' && <span className="grid-item__edit-badge" title="拖动与尺寸调整将在阶段 2 开放">组件</span>}
+          {editMode && item.kind === 'widget' && <span className="grid-item__edit-badge" title={item.locked ? '已锁定，不能拖动' : '拖动可移动'}>{item.locked ? '已锁定' : '组件'}</span>}
         </div>
       ))}
+      {drag.metrics && drag.origin && drag.intent && <DragOverlay metrics={drag.metrics} origin={drag.origin} intent={drag.intent} />}
     </div>
   );
 }
