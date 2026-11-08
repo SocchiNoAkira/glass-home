@@ -1,0 +1,190 @@
+import { test, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+
+const extensionPath = path.resolve('.output/chrome-mv3');
+
+async function launchExtension() {
+  const userDataDir = await fs.mkdtemp(path.join(process.cwd(), 'artifacts', 'edge-profile-'));
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    channel: 'msedge',
+    headless: false,
+    viewport: { width: 1440, height: 1000 },
+    args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
+  });
+
+  // This stage has no background worker. The current Edge uses a redesigned
+  // internal extensions page, so verify the actual new-tab registration in the
+  // isolated test profile instead of relying on private shadow-DOM selectors.
+  const preferencesPath = path.join(userDataDir, 'Default', 'Preferences');
+  await expect.poll(async () => {
+    try {
+      const preferences = JSON.parse(await fs.readFile(preferencesPath, 'utf8')) as {
+        extensions?: { chrome_url_overrides?: { newtab?: { active?: boolean; entry?: string }[] } };
+      };
+      return preferences.extensions?.chrome_url_overrides?.newtab?.find(
+        (entry) => entry.active && entry.entry?.endsWith('/newtab.html'),
+      )?.entry ?? '';
+    } catch {
+      return '';
+    }
+  }, { timeout: 15_000 }).toMatch(/^chrome-extension:\/\/[a-z]{32}\/newtab\.html$/);
+
+  const preferences = JSON.parse(await fs.readFile(preferencesPath, 'utf8')) as {
+    extensions: { chrome_url_overrides: { newtab: { entry: string }[] } };
+  };
+  const entry = preferences.extensions.chrome_url_overrides.newtab[0]?.entry;
+  if (!entry) throw new Error('Glass Home is not registered as the new-tab override in Edge');
+  const extensionId = new URL(entry).host;
+  return { context, extensionId, userDataDir };
+}
+
+async function openNewTab(context: BrowserContext, extensionId: string): Promise<Page> {
+  const page = await context.newPage();
+  await page.goto('chrome://newtab');
+  await expect(page).toHaveURL(`chrome-extension://${extensionId}/newtab.html`);
+  await expect(page.getByTestId('glass-home-app')).toBeVisible();
+  await page.bringToFront();
+  return page;
+}
+
+async function clickButton(page: Page, name: string) {
+  const button = page.getByRole('button', { name, exact: true });
+  await expect(button).toBeVisible();
+  await expect(button).toBeEnabled();
+  const bounds = await button.boundingBox();
+  if (!bounds) throw new Error(`Button has no layout bounds: ${name}`);
+  // Edge 156 intermittently never returns Playwright's client-rect stability
+  // check on these otherwise static controls. Use the native mouse path verified
+  // in the real browser; keep visibility, enabled and layout assertions above.
+  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+}
+
+async function clickSwitch(page: Page, name: string) {
+  const control = page.getByRole('switch', { name, exact: true });
+  await expect(control).toBeVisible();
+  const bounds = await control.boundingBox();
+  if (!bounds) throw new Error(`Switch has no layout bounds: ${name}`);
+  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+}
+
+async function expectColumnCount(page: Page, count: number) {
+  await expect(page.getByTestId('glass-home-app')).toHaveAttribute('data-columns', String(count));
+  const widths = await page.getByTestId('shortcut-grid').evaluate((grid) =>
+    getComputedStyle(grid).gridTemplateColumns.split(' ').map((width) => Number.parseFloat(width)),
+  );
+  expect(widths).toHaveLength(count);
+  expect(widths.every((width) => Number.isFinite(width) && width > 0)).toBe(true);
+}
+
+test.describe('stage 0 production extension on installed Microsoft Edge', () => {
+  let context: BrowserContext;
+  let extensionId: string;
+  let userDataDir: string;
+
+  test.beforeAll(async () => {
+    const launched = await launchExtension();
+    context = launched.context;
+    extensionId = launched.extensionId;
+    userDataDir = launched.userDataDir;
+  });
+
+  test.afterAll(async () => {
+    await context?.close();
+    if (userDataDir) await fs.rm(userDataDir, { recursive: true, force: true });
+  });
+
+  test('loads the local extension and preserves the twenty independent shortcuts', async () => {
+    const page = await openNewTab(context, extensionId);
+    await expect(page).toHaveTitle('Glass Home');
+    await expect(page.getByRole('link', { name: '打开 GitHub', exact: true })).toHaveAttribute('href', 'https://github.com');
+    await expect(page.getByTestId('shortcut-grid').locator('.shortcut')).toHaveCount(20);
+    await expect(page.getByTestId('clock')).toContainText(':');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expectColumnCount(page, 10);
+    await page.close();
+  });
+
+  test('switches grid, material, editing, theme and reduced-motion states', async () => {
+    const page = await openNewTab(context, extensionId);
+    await clickButton(page, '打开设计验证面板');
+    await clickButton(page, '5 列 · 窄屏');
+    await expectColumnCount(page, 5);
+    await clickButton(page, '8 列 · 中等');
+    await expectColumnCount(page, 8);
+    await clickButton(page, '关闭 · 实体表面');
+    await expect(page.getByTestId('glass-home-app')).toHaveClass(/material-off/);
+    await expect(page.getByRole('search')).toHaveCSS('backdrop-filter', 'none');
+    await clickButton(page, '高 · 完整折射');
+    await expect(page.getByTestId('glass-home-app')).toHaveClass(/material-high/);
+    await clickSwitch(page, '编辑主屏幕');
+    await expect(page.getByTestId('glass-home-app')).toHaveClass(/is-editing/);
+    await expect(page.getByRole('button', { name: '完成' })).toBeVisible();
+    await expect(page.getByRole('complementary', { name: '设计验证面板' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('glass-home-app')).not.toHaveClass(/is-editing/);
+    await clickButton(page, '打开设计验证面板');
+    await clickSwitch(page, '深色外观');
+    await expect(page.getByTestId('glass-home-app')).toHaveClass(/theme-light/);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await page.locator('.shortcut__icon').first().evaluate((element) => getComputedStyle(element).animationDuration)).toBe('1e-05s');
+    await clickButton(page, '10 列 · 宽屏');
+    await expectColumnCount(page, 10);
+    await clickSwitch(page, '深色外观');
+    await page.close();
+  });
+
+  test('validates IndexedDB commit/readback and forced abort without persisting probe data', async () => {
+    const page = await openNewTab(context, extensionId);
+    await clickButton(page, '打开设计验证面板');
+    await clickButton(page, 'IndexedDB 事务验证');
+    await expect(page.locator('.probe-result--passed')).toContainText('主动中止回滚成功');
+    await page.close();
+  });
+
+  test('isolates sandbox DOM and extension APIs, with no requested permissions', async () => {
+    const page = await openNewTab(context, extensionId);
+    await clickButton(page, '打开设计验证面板');
+    await clickButton(page, 'Widget 沙箱验证');
+    await expect(page.locator('.probe-result--passed')).toContainText('父 DOM：已隔离；扩展 API：不可用');
+    const manifest = JSON.parse(await fs.readFile(path.join(extensionPath, 'manifest.json'), 'utf8')) as {
+      permissions?: string[];
+      host_permissions?: string[];
+      chrome_url_overrides?: { newtab?: string };
+      sandbox?: { pages?: string[] };
+      content_security_policy?: { sandbox?: string };
+    };
+    expect(manifest.permissions ?? []).toEqual([]);
+    expect(manifest.host_permissions ?? []).toEqual([]);
+    expect(manifest.chrome_url_overrides?.newtab).toBe('newtab.html');
+    expect(manifest.sandbox?.pages).toContain('widget-probe.html');
+    expect(manifest.content_security_policy?.sandbox).not.toContain('unsafe-eval');
+    expect(manifest.content_security_policy?.sandbox).toContain("connect-src 'none'");
+    await page.close();
+  });
+
+  test('keeps search keyboard interaction local and does not steal browser focus', async () => {
+    const page = await openNewTab(context, extensionId);
+    const search = page.getByRole('searchbox', { name: '搜索或输入网址' });
+    await search.fill('Glass Home');
+    await search.press('Enter');
+    await expect(page.locator('.search-message')).toContainText('搜索交互已验证：「Glass Home」');
+    expect(new URL(page.url()).protocol).toBe('chrome-extension:');
+    await search.fill('');
+    await search.press('Enter');
+    await expect(page.locator('.search-message')).toContainText('输入关键词或网址，开始探索。');
+    await page.close();
+  });
+
+  test('supports five-column narrow layout without horizontal overflow', async () => {
+    const page = await openNewTab(context, extensionId);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await clickButton(page, '打开设计验证面板');
+    await clickButton(page, '5 列 · 窄屏');
+    await expectColumnCount(page, 5);
+    await clickButton(page, '关闭设计验证面板');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect(page.getByTestId('shortcut-grid').locator('.shortcut')).toHaveCount(20);
+    await page.close();
+  });
+});

@@ -1,0 +1,8 @@
+allowBuilds:
+  esbuild: true
+overrides:
+  '@wxt-dev/module-react>@vitejs/plugin-react': 5.1.4
+minimumReleaseAgeExclude:
+  - '@playwright/test@1.65.0'
+  - playwright-core@1.65.0
+  - playwright@1.65.0
