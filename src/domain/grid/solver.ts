@@ -1,19 +1,21 @@
 import { collidingItems, layoutHeight, layoutSignature, OccupancyGrid } from './occupancy';
 import {
   BUILTIN_SIZE_CONSTRAINTS, constraintsForItem, findFirstFit, isValidConstrainedLayout,
-  isValidSize, readingOrder, rectsOverlap, type GridColumns,
+  isValidLayout, isValidSize, readingOrder, rectsOverlap, type GridColumns,
   type LayoutConstraints, type LayoutItem, type Rect, type SizeConstraint,
 } from './model';
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type LayoutPreference = 'auto' | 'swap-first' | 'push-first';
-export type LayoutOperation = 'move' | 'swap' | 'push' | 'resize' | 'lock';
+export type LayoutOperation = 'move' | 'swap' | 'push' | 'resize' | 'lock' | 'reflow' | 'compact';
 
 export type LayoutCommand =
   | { readonly type: 'move'; readonly instanceId: string; readonly target: Rect; readonly pointerDirection?: Direction }
   | { readonly type: 'resize'; readonly instanceId: string; readonly target: Rect; readonly pointerDirection?: Direction }
   | { readonly type: 'set-lock'; readonly instanceId: string; readonly locked: boolean }
-  | { readonly type: 'insert'; readonly item: LayoutItem; readonly preferred?: { readonly x: number; readonly y: number } };
+  | { readonly type: 'insert'; readonly item: LayoutItem; readonly preferred?: { readonly x: number; readonly y: number } }
+  /** Whole-layout tidy (baseline 6.11 compact mode). Carries no target. */
+  | { readonly type: 'compact' };
 
 export interface SolveBudget {
   readonly maxNodes: number;
@@ -101,6 +103,7 @@ class LayoutSolver {
     if (input.budget.maxNodes < 1 || input.budget.maxMs < 0 || input.budget.maxAffectedItems < 0) return this.fail('invalid', '求解预算不合法。');
 
     const command = input.command;
+    if (command.type === 'compact') return this.compact();
     if (command.type === 'insert') return this.insert();
     if (command.type === 'set-lock') {
       if (!input.items.some((item) => item.instanceId === command.instanceId)) return this.fail('invalid', '找不到要锁定的实例。');
@@ -152,7 +155,17 @@ class LayoutSolver {
       ...(command.pointerDirection ? { direction: command.pointerDirection } : {}),
     };
     const placed = this.searchWithMinimumDisplacement(state, collisions.length);
-    if (!placed) return this.fail(this.failureStatus, this.foundCycle && this.failureStatus === 'no-placement' ? '推挤链检测到循环，已尝试其他候选并保留原布局。' : this.failureReason);
+    if (!placed) {
+      // Baseline 6.9: when the low-cost push chain finds nothing, fall back to
+      // a local rearrangement instead of ending in a rollback. Budget
+      // exhaustion and cancellation must not be retried with a wider search —
+      // that would just spend the same budget again.
+      if (this.failureStatus === 'no-placement') {
+        const reflowed = this.reflow(moved);
+        if (reflowed) return this.success(reflowed, 'reflow');
+      }
+      return this.fail(this.failureStatus, this.foundCycle && this.failureStatus === 'no-placement' ? '推挤链检测到循环，已尝试其他候选并保留原布局。' : this.failureReason);
+    }
     return this.success(placed.items, command.type === 'resize' ? 'resize' : placed.displaced > 0 ? 'push' : 'move');
   }
 
@@ -177,6 +190,98 @@ class LayoutSolver {
 
   private constraint(item: LayoutItem): SizeConstraint {
     return constraintsForItem(item, this.constraints);
+  }
+
+  /**
+   * Baseline 6.9 local rearrangement. The dragged item is pinned at its target
+   * and every locked item is pinned too; the rest are re-placed greedily in
+   * reading order using baseline 6.10 score #4 (fewest moved objects) as the
+   * primary criterion, then distance. Sizes never change and every candidate
+   * is validated against the full layout before being returned.
+   */
+  private reflow(moved: LayoutItem): readonly LayoutItem[] | undefined {
+    const locked = this.input.items.filter((item) => item.locked && item.instanceId !== moved.instanceId);
+    const movable = readingOrder(this.input.items.filter((item) => !item.locked && item.instanceId !== moved.instanceId));
+    const fixed: LayoutItem[] = [moved, ...locked];
+    // Only the pinned subset can be validated up front; the movable items are
+    // being re-placed and are expected to overlap at this point.
+    if (!isValidLayout(fixed, this.input.columns)) return undefined;
+
+    let placed = fixed;
+    const relocated: LayoutItem[] = [];
+    for (const item of movable) {
+      if (!this.consume()) return undefined;
+      const spot = this.bestReflowSpot(item, placed);
+      if (!spot) return undefined;
+      const next = { ...item, ...spot };
+      if (spot.x !== item.x || spot.y !== item.y) relocated.push(next);
+      placed = [...placed, next];
+    }
+    // Nothing to move means the push failure was not really a placement problem.
+    if (relocated.length === 0) return undefined;
+    // Sizes are never touched, but the full layout still has to pass every
+    // constraint before it may be committed.
+    const candidate = [...placed];
+    return this.valid(candidate) ? candidate : undefined;
+  }
+
+  /**
+   * Picks the lowest-cost legal position for one item: original cell first,
+   * then the nearest cells in reading order. Re-placing an item costs one move,
+   * so a stay-put candidate always wins when it is legal.
+   */
+  private bestReflowSpot(item: LayoutItem, fixed: readonly LayoutItem[]): Rect | undefined {
+    const own = { x: item.x, y: item.y, w: item.w, h: item.h };
+    if (!collidingItems(fixed, own).length) return own;
+    const height = layoutHeight(fixed) + item.h + 2;
+    const options: Rect[] = [];
+    for (let y = 0; y <= height; y += 1) {
+      for (let x = 0; x <= this.input.columns - item.w; x += 1) {
+        const rect: Rect = { x, y, w: item.w, h: item.h };
+        if (!collidingItems(fixed, rect).length) options.push(rect);
+      }
+    }
+    // Reading order keeps icons from jumping backwards; distance breaks ties.
+    return options.sort((a, b) => a.y - b.y || a.x - b.x)[0];
+  }
+
+  /**
+   * Baseline 6.11 compact mode. Locked items keep their cells, larger objects
+   * are seated first so small icons fill the gaps around them, and each object
+   * lands in the first free cell in reading order. Icon relative order is
+   * preserved because equal-size items are placed in their original order.
+   */
+  private compact(): SolveResult {
+    const { input } = this;
+    const locked = input.items.filter((item) => item.locked);
+    const movable = [...input.items.filter((item) => !item.locked)].sort((a, b) =>
+      b.w * b.h - a.w * a.h || a.y - b.y || a.x - b.x || a.order - b.order || a.instanceId.localeCompare(b.instanceId));
+
+    const placed: LayoutItem[] = [...locked];
+    for (const item of movable) {
+      if (!this.consume()) return this.fail(this.failureStatus, this.failureReason);
+      const spot = this.firstFreeSpot(item, placed);
+      if (!spot) return this.fail('no-placement', '紧凑整理找不到合法位置，已保留原布局。');
+      placed.push({ ...item, ...spot });
+    }
+    // Preserve the caller's item order so the transaction diff stays readable.
+    const byId = new Map(placed.map((item) => [item.instanceId, item]));
+    const candidate = input.items.map((item) => byId.get(item.instanceId) ?? item);
+    if (!this.valid(candidate)) return this.fail('invalid', '紧凑整理结果未通过全量校验，已保留原布局。');
+    return this.success(candidate, 'compact');
+  }
+
+  /** First free cell, scanning top-to-bottom then left-to-right. */
+  private firstFreeSpot(item: LayoutItem, fixed: readonly LayoutItem[]): Rect | undefined {
+    // One extra row is enough: the pass is dense-only when it runs out of space.
+    const height = layoutHeight(fixed) + item.h + 1;
+    for (let y = 0; y <= height; y += 1) {
+      for (let x = 0; x <= this.input.columns - item.w; x += 1) {
+        const rect: Rect = { x, y, w: item.w, h: item.h };
+        if (!collidingItems(fixed, rect).length) return rect;
+      }
+    }
+    return undefined;
   }
 
   private valid(items: readonly LayoutItem[]): boolean {

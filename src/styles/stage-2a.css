@@ -1,4 +1,6 @@
-/* Stage 2A: explicit, inspectable layout transactions, not drag interactions. */
+/* Stage 2A: explicit, inspectable layout transactions, not drag interactions.
+   Stage 2B-2 reuses this panel for the compact tidy entry, so the two share one
+   visual language instead of growing a second style sheet. */
 .layout-inspector { margin-top: 26px; padding: 21px; border-radius: 20px; background: var(--glass-surface); }
 .layout-inspector__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .layout-inspector__heading h2 { margin: 7px 0 0; font-size: 18px; font-weight: 500; }
@@ -11,6 +13,11 @@
 .layout-inspector__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 11px; color: var(--text-muted); }
 .layout-inspector__meta > span, .layout-inspector__meta > label { display: inline-flex; align-items: center; gap: 6px; }
 .layout-inspector__meta select { min-height: 30px; padding: 4px 7px; border: 1px solid #ffffff29; border-radius: 8px; background: #ffffff0c; color: var(--text); font-size: 12px; }
+/* Compact tidy sits on its own line: it is a whole-layout action, not a
+   per-object control, and mixing it into the target-cell row read as if it
+   belonged to the selected object. */
+.layout-inspector__compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 15px; padding-top: 14px; border-top: 1px solid #ffffff1a; }
+.layout-inspector__compact small { flex: 1 1 260px; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
 .layout-preview { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 18px; padding: 15px; border: 1px solid #edc3cb4d; border-radius: 13px; background: #edc3cb10; }
 .layout-preview strong { font-size: 13px; font-weight: 500; }
 .layout-preview p { margin: 6px 0; color: var(--text-soft); font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
@@ -25,4 +32,5 @@
   .layout-inspector__controls > button { grid-column: 1 / -1; justify-self: start; }
   .layout-preview { flex-direction: column; align-items: stretch; }
   .layout-preview__actions { justify-content: flex-end; }
+  .layout-inspector__compact small { flex-basis: 100%; }
 }

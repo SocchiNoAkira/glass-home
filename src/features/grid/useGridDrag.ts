@@ -213,6 +213,10 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
       preferenceForIntent(nextIntent),
     );
     previewActiveRef.current = accepted;
+    // Baseline 6.9 does not need a retry at this layer: every move command
+    // reaches the solver's own reflow fallback once the push chain gives up,
+    // whatever preference produced the command. Retrying here would repeat the
+    // same failure and could clear the explanation the solver already wrote.
   };
 
   const onPointerUp = (event: ReactPointerEvent<HTMLElement>) => {
