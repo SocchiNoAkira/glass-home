@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceRepository, type LoadWorkspaceResult } from '@/src/infrastructure/persistence/workspaceRepository';
 import { AssetRepository } from '@/src/infrastructure/persistence/assetRepository';
 import { WidgetStorage } from '@/src/infrastructure/persistence/widgetStorage';
-import type { Workspace, WorkspaceAsset } from '@/src/domain/workspace/model';
+import type { Workspace, WorkspaceAsset, WorkspaceBackupWidgetRecord } from '@/src/domain/workspace/model';
 import type { GridColumns } from '@/src/domain/grid/model';
 import { DEFAULT_SOLVE_BUDGET, solveLayout, type LayoutCommand, type LayoutPreference } from '@/src/domain/grid/solver';
 import { applyLayoutTransaction, createLayoutPreview, restoreLayoutTransaction, type LayoutTransaction } from '@/src/domain/layout/transaction';
@@ -41,6 +41,9 @@ export function useWorkspace() {
   const [preview, setPreview] = useState<LayoutTransaction | undefined>(undefined);
   const previewRef = useRef<LayoutTransaction | undefined>(undefined);
   const [historyVersion, setHistoryVersion] = useState(0);
+  // Bumped whenever widget data is dropped outside a widget so every mounted
+  // widget re-reads storage; without it a cleared list would keep rendering.
+  const [widgetDataVersion, setWidgetDataVersion] = useState(0);
   const commitSequenceRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const updateWorkspace = useCallback((next: Workspace | undefined) => {
@@ -156,18 +159,31 @@ export function useWorkspace() {
     await enqueueCommitRef.current(() => commitNow(candidate, successMessage, true));
   }, [commitNow]);
 
-  const commitImport = useCallback(async (candidate: Workspace, assets: readonly WorkspaceAsset[] = []): Promise<void> => {
+  const commitImport = useCallback(async (
+    candidate: Workspace,
+    assets: readonly WorkspaceAsset[] = [],
+    /**
+     * `undefined` = "the backup carries no widget-data field" (an older file):
+     * leave stored widget rows alone. `[]` = "the backup genuinely has none":
+     * clear them. The distinction matters, otherwise importing an old backup
+     * would silently delete the user's to-do list.
+     */
+    widgetData?: readonly WorkspaceBackupWidgetRecord[],
+  ): Promise<void> => {
     await enqueueCommitRef.current(async () => {
       const operation = ++operationRef.current;
       previewCoordinatorRef.current.cancel();
       updatePreview(undefined);
       setSaveState('saving');
       try {
-        await repositoryRef.current?.replace(candidate, assets);
+        await repositoryRef.current?.replace(candidate, assets, widgetData);
         if (!mountedRef.current || operation !== operationRef.current) return;
         updateWorkspace(candidate);
         historyRef.current.clear();
         setHistoryVersion((version) => version + 1);
+        // The imported records replaced every widget row, so mounted widgets
+        // must reload before the next render reads their state.
+        setWidgetDataVersion((version) => version + 1);
         setSaveState('saved');
         setNotice('备份已导入，主屏幕已恢复。');
       } catch (error) {
@@ -179,7 +195,9 @@ export function useWorkspace() {
   }, [updatePreview, updateWorkspace]);
 
   const reset = useCallback(async (candidate: Workspace): Promise<void> => {
-    await commitImport(candidate);
+    // An explicit reset wants a genuinely empty widget store, so `[]` is passed
+    // rather than `undefined` (which would mean "leave widget data alone").
+    await commitImport(candidate, [], []);
     setWallpaperUrl(undefined);
   }, [commitImport]);
 
@@ -193,6 +211,41 @@ export function useWorkspace() {
   }, []);
 
   const clearError = useCallback(() => setSaveError(undefined), []);
+
+  /**
+   * Drops one instance's stored rows (baseline 12.4 "清除单 Widget 数据").
+   *
+   * Only the widget store is touched: the instance keeps its cell, its layout
+   * and its settings, because the user asked to clear the *data*, not to
+   * remove the widget.
+   */
+  const clearWidgetData = useCallback(async (namespace: string): Promise<void> => {
+    const storage = widgetStorageRef.current;
+    if (!storage) throw new Error('组件存储尚未就绪，请稍后重试。');
+    await enqueueCommitRef.current(() => storage.clearNamespace(namespace));
+    if (mountedRef.current) setWidgetDataVersion((version) => version + 1);
+  }, []);
+
+  /**
+   * Drops every row in every store Glass Home owns (baseline 12.4 "清除全部数据").
+   *
+   * Goes through `repository.clear()` only: it clears all three stores in one
+   * transaction, so widget storage cannot be re-populated by a queued write
+   * racing a separate clear on a different connection.
+   */
+  const clearAllData = useCallback(async (): Promise<void> => {
+    await enqueueCommitRef.current(async () => {
+      await repositoryRef.current?.clear();
+    });
+    if (mountedRef.current) setWidgetDataVersion((version) => version + 1);
+  }, []);
+
+  /** Bytes held by widget data, for the data-management panel. */
+  const widgetStorageUsage = useCallback(async (): Promise<number> => {
+    const storage = widgetStorageRef.current;
+    if (!storage) return 0;
+    return storage.totalUsage();
+  }, []);
 
   const previewLayout = useCallback((breakpoint: GridColumns, command: LayoutCommand, preference: LayoutPreference = 'auto'): boolean => {
     const current = workspaceRef.current;
@@ -282,8 +335,10 @@ export function useWorkspace() {
   return {
     workspace, repository: repositoryRef.current, assets: assetsRef.current,
     widgetStorage: storageReady ? widgetStorageRef.current : undefined,
+    widgetDataVersion,
     loadError, saveState, saveError, notice, columns, wallpaperUrl,
     commit, commitImport, reset, changeWallpaper, reportError, clearError,
+    clearWidgetData, clearAllData, widgetStorageUsage,
     displayWorkspace, preview, previewLayout, cancelLayoutPreview, commitLayoutPreview,
     undoLayout, redoLayout, clearHistory,
     canUndo: historyRef.current.canUndo, canRedo: historyRef.current.canRedo,

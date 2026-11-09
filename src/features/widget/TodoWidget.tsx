@@ -20,10 +20,16 @@ const STATE_KEY = 'state';
 
 export type TodoStorageBridge = Pick<WidgetStorage, 'read' | 'write'>;
 
-export function TodoWidget({ instanceId, storage, namespace, onError }: {
+export function TodoWidget({ instanceId, storage, namespace, dataVersion = 0, onError }: {
   readonly instanceId: string;
   readonly storage: TodoStorageBridge;
   readonly namespace: string;
+  /**
+   * Bumped by the host whenever widget data is dropped outside this component
+   * (e.g. "clear this widget's data" in settings). Without it the effect below
+   * would keep the in-memory list and the cleared store would look unheard.
+   */
+  readonly dataVersion?: number;
   readonly onError?: (message: string) => void;
 }) {
   const [state, setState] = useState<TodoState>(EMPTY_TODO_STATE);
@@ -41,12 +47,16 @@ export function TodoWidget({ instanceId, storage, namespace, onError }: {
 
   // A widget must be able to rebuild itself from persisted state alone
   // (baseline 10.7), so everything is loaded before the first render commits.
+  // `dataVersion` re-runs this after an outside clear, so the component never
+  // keeps showing items that no longer exist on disk.
   useEffect(() => {
     let cancelled = false;
     void storage.read<unknown>(namespace, STATE_KEY)
       .then((stored) => {
         if (cancelled || !mountedRef.current) return;
         setState(parseTodoState(stored));
+        setDraft('');
+        setNotice(undefined);
         setLoaded(true);
       })
       .catch(() => {
@@ -56,7 +66,7 @@ export function TodoWidget({ instanceId, storage, namespace, onError }: {
         setLoaded(true);
       });
     return () => { cancelled = true; };
-  }, [namespace, storage]);
+  }, [namespace, storage, dataVersion]);
 
   const persist = useCallback((next: TodoState) => {
     void storage.write(namespace, STATE_KEY, next).catch((error: unknown) => {

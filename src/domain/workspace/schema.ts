@@ -4,6 +4,7 @@ import { validateShortcut } from '@/src/domain/shortcuts/shortcut';
 import { validateSearchTemplate } from '@/src/domain/search/search';
 import {
   BUILTIN_WIDGET_IDS,
+  WIDGET_NAMESPACE_QUOTA_BYTES,
   WORKSPACE_SCHEMA_VERSION,
   type Workspace,
   type WorkspaceBackup,
@@ -80,10 +81,22 @@ const workspace = z.object({
 export const MAX_BACKUP_BYTES = 12 * 1024 * 1024;
 export const MAX_ASSET_BYTES = 4 * 1024 * 1024;
 const imageMime = z.enum(['image/png', 'image/jpeg', 'image/webp']);
+/**
+ * Widget data stays a *string* payload: storage holds exactly that text, so an
+ * import cannot silently re-shape the user's records by parsing and
+ * re-serialising them.
+ */
+const widgetRecord = z.object({
+  namespace: z.string().min(1).max(200),
+  key: z.string().min(1).max(400),
+  payload: z.string().min(2).max(WIDGET_NAMESPACE_QUOTA_BYTES),
+  updatedAt: isoDate,
+}).strict();
 const backupSchema = z.object({
   format: z.literal('glass-home-backup'), version: z.literal(1), exportedAt: isoDate,
   workspace,
   assets: z.array(z.object({ id: z.string().min(1).max(160), mimeType: imageMime, dataUrl: z.string().max(6 * 1024 * 1024) }).strict()).max(210),
+  widgetData: z.array(widgetRecord).max(1000).optional(),
 }).strict();
 
 function isValidTimeZone(value: string): boolean {
@@ -156,7 +169,56 @@ export function validateBackup(value: unknown): WorkspaceBackup {
     if (!/^[a-z\d+/]*={0,2}$/i.test(base64) || base64.length % 4 !== 0) throw new Error('图片资源不是有效的 Base64。');
     if (Math.floor(base64.length * 3 / 4) > MAX_ASSET_BYTES) throw new Error('单张图片不能超过 4MB。');
   }
-  return candidate;
+  // `undefined` must survive validation: it is the signal "this backup predates
+  // the widget-data field", and the importer uses it to leave existing widget
+  // rows alone instead of wiping them.
+  return {
+    ...candidate,
+    ...(candidate.widgetData === undefined ? {} : { widgetData: validateWidgetData(candidate.workspace, candidate.widgetData) }),
+  };
+}
+
+/**
+ * Widget data has one rule that matters more than any other: a backup must not
+ * be able to *inject* data into a namespace the workspace does not declare.
+ * Every namespace therefore has to belong to an instance in `workspace.widgets`,
+ * which is also the set of namespaces the "clear one widget" action can address.
+ */
+function validateWidgetData(
+  workspace: Workspace,
+  widgetData: WorkspaceBackup['widgetData'],
+): NonNullable<WorkspaceBackup['widgetData']> {
+  if (!widgetData?.length) return [];
+  const declared = new Set(workspace.widgets.map((widget) => widget.storageNamespace));
+  const seen = new Set<string>();
+  const bytesPerNamespace = new Map<string, number>();
+
+  for (const record of widgetData) {
+    if (!declared.has(record.namespace)) {
+      throw new Error(`备份包含未声明的组件数据命名空间：${record.namespace}`);
+    }
+    // The stored key is `${namespace}:${localKey}`, so re-adding a prefix here
+    // would produce a record no reader ever looks up.
+    if (record.key.includes(record.namespace + ':')) throw new Error('组件数据的键不能包含命名空间前缀。');
+    const identity = `${record.namespace}\u0000${record.key}`;
+    if (seen.has(identity)) throw new Error('备份中的组件数据不能重复。');
+    seen.add(identity);
+
+    const bytes = payloadBytesOf(record.payload);
+    const total = (bytesPerNamespace.get(record.namespace) ?? 0) + bytes;
+    if (total > WIDGET_NAMESPACE_QUOTA_BYTES) {
+      throw new Error(`组件数据超出单个组件配额（${WIDGET_NAMESPACE_QUOTA_BYTES} 字节）。`);
+    }
+    bytesPerNamespace.set(record.namespace, total);
+
+    // Storing unparseable text would surface later as a silently empty widget.
+    try { JSON.parse(record.payload); } catch { throw new Error('组件数据不是有效的 JSON。'); }
+  }
+  return widgetData;
+}
+
+function payloadBytesOf(payload: string): number {
+  return new TextEncoder().encode(payload).byteLength;
 }
 
 export async function validateAssetImage(asset: WorkspaceBackup['assets'][number]): Promise<Blob> {

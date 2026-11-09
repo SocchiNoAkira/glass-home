@@ -1,5 +1,14 @@
 import type { GridColumns, LayoutItem } from '@/src/domain/grid/model';
 
+/**
+ * Bytes one widget namespace may occupy (baseline 10.x quota).
+ *
+ * Declared here rather than in the persistence layer so the backup validator
+ * and the storage writer agree on the same limit without the domain importing
+ * infrastructure.
+ */
+export const WIDGET_NAMESPACE_QUOTA_BYTES = 256 * 1024;
+
 export const WORKSPACE_SCHEMA_VERSION = 2;
 export const DEFAULT_WORKSPACE_ID = 'glass-home-workspace';
 /** v2 adds the to-do widget, so stored v1 data must be migrated on load. */
@@ -77,6 +86,20 @@ export interface WorkspaceAsset {
   readonly updatedAt: string;
 }
 
+/**
+ * One durable widget record inside a backup.
+ *
+ * The payload stays a JSON *string* rather than a nested object: storage keeps
+ * exactly that text, so a round trip cannot reshape (and therefore re-measure)
+ * a user's data, and the quota check on import applies to the same bytes.
+ */
+export interface WorkspaceBackupWidgetRecord {
+  readonly namespace: string;
+  readonly key: string;
+  readonly payload: string;
+  readonly updatedAt: string;
+}
+
 export interface WorkspaceBackup {
   readonly format: 'glass-home-backup';
   readonly version: 1;
@@ -87,4 +110,14 @@ export interface WorkspaceBackup {
     readonly mimeType: WorkspaceAsset['mimeType'];
     readonly dataUrl: string;
   }[];
+  /**
+   * Per-instance widget data (baseline 14.3 requires a backup to restore it).
+   *
+   * Optional so a backup exported before this field existed still imports: an
+   * absent value means "this backup carries no widget data", which is exactly
+   * what an older file contained. `| undefined` is explicit because the project
+   * runs with `exactOptionalPropertyTypes`, where "absent" and "present but
+   * undefined" are different types and the importer distinguishes them.
+   */
+  readonly widgetData?: readonly WorkspaceBackupWidgetRecord[] | undefined;
 }

@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
-import { Download, ImagePlus, RotateCcw, Trash2, Upload } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Download, Eraser, ImagePlus, RotateCcw, ShieldAlert, Trash2, Upload } from 'lucide-react';
 import { Modal } from '@/src/components/Modal';
+import { ConfirmDialog } from '@/src/components/ConfirmDialog';
 import type { WorkspaceAsset, WorkspaceSettings } from '@/src/domain/workspace/model';
 import { validateSearchTemplate } from '@/src/domain/search/search';
 import { validateImageFile } from '@/src/infrastructure/persistence/assetRepository';
@@ -9,25 +10,70 @@ import { SandboxDemo } from './SandboxDemo';
 
 export type SettingsTab = 'appearance' | 'search' | 'time' | 'data';
 
-export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUrl, busy, onSave, onClose, onExport, onImport, onReset }: {
+/** Display names for the built-in widgets; an unknown id falls back to itself. */
+const WIDGET_LABELS: Readonly<Record<string, string>> = {
+  'builtin.clock': '时钟',
+  'builtin.search': '搜索',
+  'builtin.calendar': '日历',
+  'builtin.todo': '待办',
+};
+
+export interface WidgetDataEntry {
+  readonly instanceId: string;
+  readonly namespace: string;
+  readonly bytes: number;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUrl, busy, widgetData, onSave, onClose, onExport, onImport, onReset, onClearWidgetData, onClearAllData, onRequestWidgetData }: {
   readonly settings: WorkspaceSettings;
   readonly initialTab?: SettingsTab;
   readonly wallpaperUrl?: string | undefined;
   readonly busy: boolean;
+  /** Stored data per widget instance, shown so a clear is a reasoned action. */
+  readonly widgetData: readonly WidgetDataEntry[];
   readonly onSave: (settings: WorkspaceSettings, asset?: WorkspaceAsset) => Promise<void>;
   readonly onClose: () => void;
   readonly onExport: () => Promise<void>;
   readonly onImport: (file: File) => Promise<void>;
   readonly onReset: () => void;
+  readonly onClearWidgetData: (namespace: string) => Promise<void>;
+  readonly onClearAllData: () => Promise<void>;
+  /**
+   * Asks the host to re-measure widget usage.
+   *
+   * The panel can be opened straight onto another tab and switched to "数据"
+   * from inside, which the host cannot observe — without this, the list renders
+   * stale zeros and every clear button stays disabled.
+   */
+  readonly onRequestWidgetData?: () => void;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [draft, setDraft] = useState(settings);
   const [pendingAsset, setPendingAsset] = useState<WorkspaceAsset>();
   const [preview, setPreview] = useState(wallpaperUrl);
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
+  const [pendingClear, setPendingClear] = useState<WidgetDataEntry | 'all'>();
+  const [clearing, setClearing] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const wallpaperRef = useRef<HTMLInputElement>(null);
   const update = <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]) => setDraft((current) => ({ ...current, [key]: value }));
+
+  // Opening straight onto the data tab must measure too, not only switching
+  // into it later. Done in an effect rather than during render: calling back
+  // into the host from render would set state mid-render, which React rejects.
+  const requestedRef = useRef(false);
+  useEffect(() => {
+    if (initialTab !== 'data' || requestedRef.current) return;
+    requestedRef.current = true;
+    onRequestWidgetData?.();
+  }, [initialTab, onRequestWidgetData]);
 
   const save = async () => {
     if (draft.searchEngine === 'custom') {
@@ -57,9 +103,29 @@ export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUr
     }
   };
 
+  const confirmClear = async () => {
+    const target = pendingClear;
+    if (!target) return;
+    setClearing(true);
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      if (target === 'all') await onClearAllData();
+      else await onClearWidgetData(target.namespace);
+      setNotice(target === 'all'
+        ? '已清除全部本地数据，正在重新加载。'
+        : `已清除「${WIDGET_LABELS[target.instanceId] ?? target.instanceId}」的组件数据。`);
+      setPendingClear(undefined);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '清除失败，请重试。');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return <Modal title="设置" eyebrow="MAKE IT YOURS" onClose={onClose} className="settings-modal">
     <div className="settings-tabs" role="tablist" aria-label="设置分类">
-      {([['appearance', '外观'], ['search', '搜索'], ['time', '时间与日历'], ['data', '数据']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={tab === value ? 'is-selected' : ''} onClick={() => { setTab(value); setError(undefined); }}>{label}</button>)}
+      {([['appearance', '外观'], ['search', '搜索'], ['time', '时间与日历'], ['data', '数据']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={tab === value ? 'is-selected' : ''} onClick={() => { setTab(value); setError(undefined); setNotice(undefined); if (value === 'data') onRequestWidgetData?.(); }}>{label}</button>)}
     </div>
     <div className="settings-content">
       {tab === 'appearance' && <div className="settings-section" role="tabpanel" aria-label="外观设置">
@@ -88,9 +154,31 @@ export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUr
         <label className="field" htmlFor="week-starts-on"><span>每周第一天</span><select id="week-starts-on" value={draft.weekStartsOn} onChange={(event) => update('weekStartsOn', Number(event.target.value) as 0 | 1)}><option value={1}>星期一</option><option value={0}>星期日</option></select></label>
       </div>}
       {tab === 'data' && <div className="settings-section" role="tabpanel" aria-label="数据管理">
-        <h3>本地备份</h3><p className="settings-note">备份包含设置、三个断点的布局、快捷方式与自定义壁纸，不包含任何账号或浏览历史。</p>
+        <h3>本地备份</h3><p className="settings-note">备份包含设置、三个断点的布局、快捷方式、自定义壁纸与组件数据（如待办清单）。不包含任何账号或浏览历史。</p>
         <div className="data-actions"><button className="button button--secondary" disabled={busy} onClick={() => void onExport().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : '导出失败'))}><Download size={16} />导出备份</button><button className="button button--secondary" disabled={busy} onClick={() => importRef.current?.click()}><Upload size={16} />导入备份</button><input ref={importRef} className="sr-only" type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void onImport(file).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : '导入失败')); event.target.value = ''; }} /></div>
+
+        {/* CLEAR-WIDGET-DATA: baseline 12.4 requires a per-widget clear entry. */}
+        <section className="danger-zone" aria-label="组件数据">
+          <h3>组件数据</h3>
+          <p>每个组件的本地数据单独保存。清除不会移除该组件本身，只清空它的内容，例如待办清单。</p>
+          <ul className="widget-data-list" data-testid="widget-data-list">
+            {widgetData.map((entry) => <li key={entry.instanceId} className="widget-data-list__row" data-widget-namespace={entry.namespace}>
+              <span className="widget-data-list__name">{WIDGET_LABELS[entry.instanceId] ?? entry.instanceId}</span>
+              <span className="widget-data-list__size" data-widget-bytes={entry.bytes}>{formatBytes(entry.bytes)}</span>
+              <button type="button" className="button button--secondary button--small" disabled={busy || clearing || entry.bytes === 0} onClick={() => { setError(undefined); setNotice(undefined); setPendingClear(entry); }}><Eraser size={14} />清除</button>
+            </li>)}
+          </ul>
+        </section>
+
         <div className="danger-zone"><h3>恢复默认主屏幕</h3><p>需要二次确认。此操作会替换当前设置、布局、快捷方式和本地壁纸。</p><button className="button button--danger button--small" disabled={busy} onClick={onReset}><RotateCcw size={15} />恢复默认</button></div>
+
+        {/* CLEAR-ALL-DATA: the other half of baseline 12.4. */}
+        <div className="danger-zone danger-zone--destructive">
+          <h3><ShieldAlert size={14} /> 清除全部数据</h3>
+          <p>删除本机保存的工作区、自定义图片与全部组件数据，并重建一个空白主屏幕。此操作不可撤销，建议先导出备份。</p>
+          <button type="button" className="button button--danger button--small" data-testid="clear-all-data" disabled={busy || clearing} onClick={() => { setError(undefined); setNotice(undefined); setPendingClear('all'); }}><Trash2 size={15} />清除全部数据</button>
+        </div>
+
         <Diagnostics />
         <SandboxDemo environment={{
           theme: draft.theme === 'light' ? 'light' : 'dark',
@@ -101,6 +189,24 @@ export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUr
       </div>}
     </div>
     {error && <p className="form-error" role="alert">{error}</p>}
+    {notice && <p className="form-notice" role="status" data-testid="settings-notice">{notice}</p>}
     {tab !== 'data' ? <div className="modal__actions"><span className="save-hint">设置将保存在此浏览器中</span><button type="button" className="button button--secondary" onClick={onClose}>取消</button><button type="button" className="button button--primary" onClick={() => void save()} disabled={busy}>保存设置</button></div> : <div className="modal__actions"><span className="save-hint"><Trash2 size={13} />清理入口只影响 Glass Home 数据</span><button type="button" className="button button--secondary" onClick={onClose}>完成</button></div>}
+
+    {pendingClear === 'all' && <ConfirmDialog
+      title="清除全部本地数据？"
+      description="将删除工作区、自定义图片和全部组件数据，并重建空白主屏幕。此操作不可撤销。"
+      confirmLabel="清除全部数据"
+      dangerous
+      onClose={() => setPendingClear(undefined)}
+      onConfirm={() => void confirmClear()}
+    />}
+    {pendingClear !== undefined && pendingClear !== 'all' && <ConfirmDialog
+      title={`清除「${WIDGET_LABELS[pendingClear.instanceId] ?? pendingClear.instanceId}」的组件数据？`}
+      description="将删除该组件在本机保存的全部数据。组件本身与布局位置保持不变，此操作不可撤销。"
+      confirmLabel="清除组件数据"
+      dangerous
+      onClose={() => setPendingClear(undefined)}
+      onConfirm={() => void confirmClear()}
+    />}
   </Modal>;
 }

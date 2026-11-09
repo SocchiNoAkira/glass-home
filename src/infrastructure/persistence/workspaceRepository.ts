@@ -1,13 +1,16 @@
 import { z } from 'zod';
 import { openDatabase, requestResult, transactionComplete, workspaceStore } from './database';
 import { createDefaultWorkspace } from '@/src/domain/workspace/defaults';
-import { DEFAULT_WORKSPACE_ID, WORKSPACE_SCHEMA_VERSION, type Workspace, type WorkspaceAsset } from '@/src/domain/workspace/model';
+import { DEFAULT_WORKSPACE_ID, WORKSPACE_SCHEMA_VERSION, type Workspace, type WorkspaceAsset, type WorkspaceBackupWidgetRecord } from '@/src/domain/workspace/model';
 import { normalizeWorkspace } from '@/src/domain/workspace/migration';
 import { validateWorkspace } from '@/src/domain/workspace/schema';
 
 export type LoadWorkspaceResult =
   | { status: 'ready'; workspace: Workspace; migrated?: boolean }
   | { status: 'recovery-required'; message: string };
+
+/** All three stores the app owns; "clear all data" must reach each one. */
+const ALL_STORES = ['workspaces', 'assets', 'widget-data'] as const;
 
 function storageError(error: unknown): Error {
   return error instanceof Error ? error : new Error('本地存储操作失败。');
@@ -74,16 +77,45 @@ export class WorkspaceRepository {
     return operation;
   }
 
-  async replace(workspace: Workspace, assets: readonly WorkspaceAsset[] = []): Promise<void> {
+  /**
+   * Atomically replaces the workspace, its assets and, when supplied, its
+   * widget data.
+   *
+   * `widgetData` is optional on purpose: `undefined` means "this caller has no
+   * widget data to restore" (a backup exported before the field existed, or a
+   * reset), so existing widget storage is left untouched. Passing an empty
+   * array is different — it means "the backup genuinely has none", and stale
+   * records from the current session must go.
+   */
+  async replace(
+    workspace: Workspace,
+    assets: readonly WorkspaceAsset[] = [],
+    widgetData?: readonly WorkspaceBackupWidgetRecord[],
+  ): Promise<void> {
     const operation = this.writeQueue.then(async () => {
       const validated = validateWorkspace(workspace);
       const database = await this.open();
-      const transaction = database.transaction(['workspaces', 'assets'], 'readwrite');
+      const stores = widgetData === undefined ? ['workspaces', 'assets'] as const : ALL_STORES;
+      const transaction = database.transaction([...stores], 'readwrite');
       try {
         transaction.objectStore('workspaces').put(validated);
         const assetStore = transaction.objectStore('assets');
         assetStore.clear();
         for (const asset of assets) assetStore.put(asset);
+        if (widgetData !== undefined) {
+          const widgetStore = transaction.objectStore('widget-data');
+          widgetStore.clear();
+          for (const record of widgetData) {
+            const payload = record.payload;
+            widgetStore.put({
+              key: `${record.namespace}:${record.key}`,
+              namespace: record.namespace,
+              payload,
+              bytes: new TextEncoder().encode(payload).byteLength,
+              updatedAt: record.updatedAt,
+            });
+          }
+        }
         await transactionComplete(transaction);
       } catch (error) {
         try { transaction.abort(); } catch { /* Already completed or aborted. */ }
@@ -94,11 +126,27 @@ export class WorkspaceRepository {
     return operation;
   }
 
+  /**
+   * Removes every row in all three stores.
+   *
+   * `clear()` used to touch only `workspaces`, so "clear all data" left images
+   * and widget data behind — a privacy claim that was not true. The stores are
+   * cleared in one transaction so a failure cannot leave a half-wiped database.
+   */
   async clear(): Promise<void> {
-    const database = await this.open();
-    const { transaction, store } = workspaceStore(database, 'readwrite');
-    store.clear();
-    await transactionComplete(transaction);
+    const operation = this.writeQueue.then(async () => {
+      const database = await this.open();
+      const transaction = database.transaction([...ALL_STORES], 'readwrite');
+      try {
+        for (const name of ALL_STORES) transaction.objectStore(name).clear();
+        await transactionComplete(transaction);
+      } catch (error) {
+        try { transaction.abort(); } catch { /* Already completed or aborted. */ }
+        throw storageError(error);
+      }
+    });
+    this.writeQueue = operation.catch(() => undefined);
+    return operation;
   }
 
   close(): void {

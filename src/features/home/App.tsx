@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/src/components/ConfirmDialog';
 import { RecoveryActions } from '@/src/features/settings/RecoveryActions';
 import { addShortcut, removeShortcut, updateSettings, updateShortcut } from '@/src/domain/workspace/commands';
 import { createDefaultWorkspace } from '@/src/domain/workspace/defaults';
-import { decodeBackupAssets, downloadBackup, exportBackup, readBackupFile } from '@/src/infrastructure/persistence/backup';
+import { decodeBackupAssets, backupWidgetRecords, downloadBackup, exportBackup, readBackupFile } from '@/src/infrastructure/persistence/backup';
 import { validateWorkspace } from '@/src/domain/workspace/schema';
 import type { Shortcut, WorkspaceAsset, WorkspaceSettings } from '@/src/domain/workspace/model';
 
@@ -22,6 +22,9 @@ export function App() {
   const [removingShortcut, setRemovingShortcut] = useState<Shortcut>();
   const [resetConfirm, setResetConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Per-namespace byte usage shown in the data tab, refreshed when the panel
+  // opens and after any clear, so the number the user is deciding on is real.
+  const [widgetSizes, setWidgetSizes] = useState<Readonly<Record<string, number>>>({});
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   useEffect(() => {
@@ -65,7 +68,10 @@ export function App() {
       const candidate = { ...backup.workspace, revision: (workspace?.revision ?? 0) + 1, updatedAt: new Date().toISOString() };
       validateWorkspace(candidate);
       const assets = await decodeBackupAssets(backup);
-      await store.commitImport(candidate, assets);
+      // Widget data travels with the backup (baseline 14.3). A file exported
+      // before the field existed yields `undefined`, which keeps the existing
+      // widget rows instead of wiping them.
+      await store.commitImport(candidate, assets, backupWidgetRecords(backup));
       if (backup.workspace.settings.wallpaperAssetId) {
         const asset = await store.assets.get(backup.workspace.settings.wallpaperAssetId);
         store.changeWallpaper(asset ? URL.createObjectURL(asset.blob) : undefined);
@@ -85,6 +91,43 @@ export function App() {
     anchor.download = `glass-home-raw-${new Date().toISOString().slice(0, 10)}.json`;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  /** Reads per-widget byte usage so the data panel can show real numbers. */
+  const refreshWidgetSizes = async () => {
+    const storage = store.widgetStorage;
+    if (!storage || !workspace) { setWidgetSizes({}); return; }
+    try {
+      const records = await storage.snapshot(workspace.widgets.map((widget) => widget.storageNamespace));
+      const sizes: Record<string, number> = {};
+      for (const record of records) {
+        // `snapshot` carries the stored payload text, not a byte count, so the
+        // same measurement as the quota check is applied here.
+        sizes[record.namespace] = (sizes[record.namespace] ?? 0)
+          + new TextEncoder().encode(record.payload).byteLength;
+      }
+      setWidgetSizes(sizes);
+    } catch {
+      // A usage readout is not worth an error toast; show zeros instead.
+      setWidgetSizes({});
+    }
+  };
+
+  const openSettings = (tab: SettingsTab) => {
+    setSettingsTab(tab);
+    if (tab === 'data') void refreshWidgetSizes();
+  };
+
+  const clearWidgetData = async (namespace: string) => {
+    await store.clearWidgetData(namespace);
+    await refreshWidgetSizes();
+  };
+
+  const clearAllData = async () => {
+    await store.clearAllData();
+    // The in-memory workspace now describes data that no longer exists; a
+    // reload is the only honest state, and it re-runs first-run creation.
+    window.location.reload();
   };
 
   if (!workspace) {
@@ -157,7 +200,7 @@ export function App() {
           <span className={`local-status local-status--${store.saveState}`} role="status" data-save-state={store.saveState}><span className="status-dot" />{store.saveState === 'saving' ? '正在保存到本地…' : store.saveState === 'error' ? '本地保存需要处理' : '一切就绪，只在本地'}</span>
           <button className="icon-button" aria-label="撤销布局" title="撤销布局" disabled={!store.canUndo || Boolean(store.preview)} onClick={() => void store.undoLayout().catch((error: unknown) => store.reportError(error instanceof Error ? error.message : '撤销失败。'))}><Undo2 size={17} /></button>
           <button className="icon-button" aria-label="重做布局" title="重做布局" disabled={!store.canRedo || Boolean(store.preview)} onClick={() => void store.redoLayout().catch((error: unknown) => store.reportError(error instanceof Error ? error.message : '重做失败。'))}><Redo2 size={17} /></button>
-          <button className="icon-button" aria-label="打开设置" title="设置" onClick={() => setSettingsTab('appearance')}><Settings2 size={18} /></button>
+          <button className="icon-button" aria-label="打开设置" title="设置" onClick={() => openSettings('appearance')}><Settings2 size={18} /></button>
           <span className="topbar__divider" /><span className="topbar__monogram" aria-hidden="true">G</span>
         </div>
       </header>
@@ -172,7 +215,8 @@ export function App() {
               materialQuality: workspace.settings.materialQuality,
             }}
             widgetStorage={store.widgetStorage}
-            onChooseSearchEngine={() => setSettingsTab('search')}
+            widgetDataVersion={store.widgetDataVersion}
+            onChooseSearchEngine={() => openSettings('search')}
             onEditShortcut={setEditingShortcut}
             onDuplicateShortcut={duplicateShortcut}
             onRemoveShortcut={setRemovingShortcut}
@@ -196,7 +240,18 @@ export function App() {
     {editMode && <div className="sr-only" role="status">已进入编辑模式。可以编辑快捷方式，或在布局内核验收面板选择目标格、预览并保存布局。</div>}
     {(store.saveError || store.notice) && <div className={`toast ${store.saveError ? 'toast--error' : ''}`} role={store.saveError ? 'alert' : 'status'}><span>{store.saveError ?? store.notice}</span>{store.saveError && <button onClick={store.clearError} aria-label="关闭错误提示">×</button>}</div>}
     {editingShortcut !== undefined && <ShortcutEditor shortcut={editingShortcut ?? undefined} defaultTarget={workspace.settings.openTarget} onSave={saveShortcut} onClose={() => setEditingShortcut(undefined)} />}
-    {settingsTab && <SettingsPanel settings={workspace.settings} initialTab={settingsTab} wallpaperUrl={store.wallpaperUrl} busy={busy} onSave={saveSettings} onClose={() => setSettingsTab(undefined)} onExport={async () => downloadBackup(await exportBackup(workspace, store.assets))} onImport={importWorkspace} onReset={() => setResetConfirm(true)} />}
+    {settingsTab && <SettingsPanel settings={workspace.settings} initialTab={settingsTab} wallpaperUrl={store.wallpaperUrl} busy={busy}
+      widgetData={workspace.widgets.map((widget) => ({ instanceId: widget.instanceId, namespace: widget.storageNamespace, bytes: widgetSizes[widget.storageNamespace] ?? 0 }))}
+      onSave={saveSettings} onClose={() => setSettingsTab(undefined)}
+      onExport={async () => {
+        // Widget storage must be open, otherwise the backup would silently
+        // claim "no widget data" and lose the user's list on restore.
+        if (!store.widgetStorage) throw new Error('组件存储尚未就绪，请稍后重试导出。');
+        downloadBackup(await exportBackup(workspace, store.assets, store.widgetStorage));
+      }}
+      onImport={importWorkspace} onReset={() => setResetConfirm(true)}
+      onRequestWidgetData={() => void refreshWidgetSizes()}
+      onClearWidgetData={clearWidgetData} onClearAllData={clearAllData} />}
     {removingShortcut && <ConfirmDialog title={`删除「${removingShortcut.title}」？`} description="将从所有断点移除此快捷方式。不会删除任何浏览记录或网站数据。" confirmLabel="删除快捷方式" dangerous onClose={() => setRemovingShortcut(undefined)} onConfirm={() => { void store.commit(removeShortcut(workspace, removingShortcut.id), '快捷方式已删除。').catch(() => undefined); setRemovingShortcut(undefined); }} />}
     {resetConfirm && <ConfirmDialog title="恢复默认主屏幕？" description="此操作会替换你的设置、布局、快捷方式和本地壁纸。建议先导出备份。" confirmLabel="恢复默认" dangerous onClose={() => setResetConfirm(false)} onConfirm={() => { setResetConfirm(false); void store.reset(createDefaultWorkspace()).catch((error: unknown) => store.reportError(error instanceof Error ? `恢复失败：${error.message}` : '恢复失败，请重试。')); }} />}
   </div>;

@@ -41,13 +41,15 @@ function DragOverlay({ metrics, origin, intent }: {
   </>;
 }
 
-export function HomeGrid({ workspace, columns, editMode, environment, widgetStorage, onChooseSearchEngine, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout, onWidgetError }: {
+export function HomeGrid({ workspace, columns, editMode, environment, widgetStorage, widgetDataVersion, onChooseSearchEngine, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout, onWidgetError }: {
   readonly workspace: Workspace;
   readonly columns: GridColumns;
   readonly editMode: boolean;
   /** Host-level widget environment (theme, language, motion, material). */
   readonly environment: Omit<WidgetEnvironment, 'size'>;
   readonly widgetStorage: WidgetStorage | undefined;
+  /** Bumped when widget data is cleared outside a widget, to force a re-read. */
+  readonly widgetDataVersion: number;
   readonly onChooseSearchEngine: () => void;
   readonly onEditShortcut: (shortcut: Shortcut) => void;
   readonly onDuplicateShortcut: (shortcut: Shortcut) => void;
@@ -84,6 +86,7 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
         workspace={workspace}
         environment={{ ...environment, size: { w: item.w, h: item.h } }}
         storage={widgetStorage}
+        widgetDataVersion={widgetDataVersion}
         onChooseSearchEngine={onChooseSearchEngine}
         onWidgetError={onWidgetError}
       />;

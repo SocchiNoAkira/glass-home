@@ -1,0 +1,54 @@
+/**
+ * Stage 4 data-management styles.
+ *
+ * Kept in its own file so stage-1's settings block does not grow further and a
+ * stage-4 revert is a file delete rather than a diff hunt.
+ */
+
+/* One row per widget instance: name, real byte size, then the clear action. */
+.widget-data-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+
+.widget-data-list__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #ffffff0d;
+  border: 1px solid #ffffff12;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.widget-data-list__name { font-size: 13px; color: var(--text); }
+.widget-data-list__size { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+/* The destructive block is separated by weight, not colour alone, so it still
+   reads as "different" when the palette is overridden (baseline 8.6). */
+.danger-zone--destructive { margin-top: 22px; }
+.danger-zone--destructive h3 { display: flex; align-items: center; gap: 7px; }
+
+.form-notice {
+  font-size: 13px;
+  color: var(--text-soft);
+  background: #ffffff12;
+  border: 1px solid #ffffff21;
+  padding: 11px 13px;
+  border-radius: 9px;
+  line-height: 1.7;
+}
+
+.theme-light .form-notice { background: #0000000a; border-color: #0000001f; color: #3a3546; }
+.theme-light .widget-data-list__row { background: #0000000a; border-color: #00000014; }
+
+@media (max-width: 420px) {
+  .widget-data-list__row { grid-template-columns: minmax(70px, 1fr) auto; gap: 8px; }
+  .widget-data-list__size { display: none; }
+}
+
+/* High-contrast / forced-colors fallback for the rows and destructive block. */
+@media (forced-colors: active) {
+  .widget-data-list__row { border: 1px solid CanvasText; background: Canvas; }
+  .danger-zone--destructive .button--danger { border: 1px solid CanvasText; }
+}

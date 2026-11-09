@@ -1,6 +1,15 @@
-import type { WorkspaceAsset, WorkspaceBackup } from '@/src/domain/workspace/model';
+import type { WorkspaceAsset, WorkspaceBackup, WorkspaceBackupWidgetRecord } from '@/src/domain/workspace/model';
 import { MAX_BACKUP_BYTES, validateBackup, validateAssetImage } from '@/src/domain/workspace/schema';
 import { AssetRepository, blobToDataUrl } from './assetRepository';
+import type { WidgetStorage } from './widgetStorage';
+
+/**
+ * Local backup: settings, layouts, shortcuts, images **and** widget data
+ * (baseline 14.3). Widget data used to be missing here, which made a restored
+ * backup silently lose every to-do item.
+ */
+
+const MISSING_ASSET = '备份所需的图片资源缺失，请重新选择图片后再导出。';
 
 export async function readBackupFile(file: File): Promise<WorkspaceBackup> {
   if (file.size > MAX_BACKUP_BYTES) throw new Error('备份文件不能超过 12MB。');
@@ -20,15 +29,36 @@ export async function decodeBackupAssets(backup: WorkspaceBackup): Promise<Works
   return assets;
 }
 
-export async function exportBackup(workspace: WorkspaceBackup['workspace'], assetRepository: AssetRepository): Promise<WorkspaceBackup> {
+/**
+ * Widget data is deliberately *not* decoded here: `validateBackup` already
+ * rejected unknown namespaces, duplicate keys and unparseable payloads, so the
+ * records are carried through verbatim and written in the same transaction as
+ * the workspace and its assets.
+ *
+ * Returns `undefined` for a backup without the field, which the importer treats
+ * as "older file, keep the widget rows that already exist".
+ */
+export function backupWidgetRecords(backup: WorkspaceBackup): readonly WorkspaceBackupWidgetRecord[] | undefined {
+  return backup.widgetData;
+}
+
+export async function exportBackup(
+  workspace: WorkspaceBackup['workspace'],
+  assetRepository: AssetRepository,
+  widgetStorage: WidgetStorage,
+): Promise<WorkspaceBackup> {
   const assetIds = [workspace.settings.wallpaperAssetId, ...workspace.shortcuts.map((item) => item.iconAssetId)].filter((id): id is string => Boolean(id));
   const assets = [];
   for (const id of assetIds) {
     const asset: WorkspaceAsset | undefined = await assetRepository.get(id);
-    if (!asset) throw new Error('备份所需的图片资源缺失，请重新选择图片后再导出。');
+    if (!asset) throw new Error(MISSING_ASSET);
     assets.push({ id: asset.id, mimeType: asset.mimeType, dataUrl: await blobToDataUrl(asset.blob) });
   }
-  return { format: 'glass-home-backup', version: 1, exportedAt: new Date().toISOString(), workspace, assets };
+  // Scoped to the namespaces the workspace declares: leftovers from an instance
+  // the user already removed must not come back through an import.
+  const namespaces = workspace.widgets.map((widget) => widget.storageNamespace);
+  const widgetData = await widgetStorage.snapshot(namespaces);
+  return { format: 'glass-home-backup', version: 1, exportedAt: new Date().toISOString(), workspace, assets, widgetData };
 }
 
 export function downloadBackup(backup: WorkspaceBackup): void {
