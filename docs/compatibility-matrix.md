@@ -1,6 +1,6 @@
 # 浏览器兼容矩阵（阶段 2A）
 
-> 仅记录实际测试。阶段 2A 的最终回归为 Edge 157，证据见 `docs/verification/stage-2a.md`。Edge 通过不代表其他 Chromium 浏览器自动通过。
+> 仅记录实际测试。阶段 2A 的最终回归为 Edge 157，证据见 `docs/implementation-plan.md` 的「验证与交付记录」。Edge 通过不代表其他 Chromium 浏览器自动通过。
 
 | 能力 | Edge 157 / macOS arm64 | Chrome / macOS | Firefox | Safari |
 |---|---|---|---|---|

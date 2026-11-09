@@ -14,7 +14,7 @@ pnpm build
 
 生产扩展输出：`/Volumes/Cupcake/Workspace/glass-home/.output/chrome-mv3`。在 Edge 打开 `edge://extensions`，启用开发者模式，选择“加载解压缩的扩展”，加载上述目录。
 
-当前已通过 TypeScript、189 项单元/属性测试（另有 2 项显式跳过并注明浏览器覆盖位置）、生产构建，以及 37 个真实 Edge 用例连续两轮共 74 次执行。阶段 3 证据见 `docs/verification/stage-3.md`；2B-2、2B-1、2A、1、0 的验证记录独立保留。
+当前已通过 TypeScript、189 项单元/属性测试（另有 2 项显式跳过并注明浏览器覆盖位置）、生产构建，以及 37 个真实 Edge 用例连续两轮共 74 次执行。全部阶段的实施记录、验证结果与未完成清单统一维护在 `docs/implementation-plan.md`。
 
 ## 检查
 
@@ -69,6 +69,6 @@ pnpm test:e2e
 - 技术决策：`docs/adr/0001-stage-0-foundation.md`
 - 网格状态机：`docs/grid-state-machine.md`
 - 兼容矩阵：`docs/compatibility-matrix.md`
-- 阶段验证：`docs/verification/`
+- 实施进度与验证记录：`docs/implementation-plan.md`（阶段计划、实施记录、验证结果、未完成清单全部在此）
 
 项目只在本机开发，无账号、无行为统计、无远程脚本。未获用户明确授权不执行 Git 提交、推送或发布。
