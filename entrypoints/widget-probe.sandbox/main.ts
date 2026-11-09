@@ -65,10 +65,12 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 
 // Announce readiness, then ask the host for the one capability this demo uses.
 // The host authorises the request; this page never decides its own permissions.
-window.parent.postMessage(
-  { protocolVersion: WIDGET_PROTOCOL_VERSION, type: 'event', method: 'sandbox.ready', instanceId: INSTANCE_ID },
-  '*',
-);
+function announceReady() {
+  window.parent.postMessage(
+    { protocolVersion: WIDGET_PROTOCOL_VERSION, type: 'event', method: 'sandbox.ready', instanceId: INSTANCE_ID },
+    '*',
+  );
+}
 
 function requestEnvironment() {
   window.parent.postMessage(
@@ -85,8 +87,41 @@ function requestEnvironment() {
   );
 }
 
-// Wait a frame so the host has attached its listener before the request lands.
-window.requestAnimationFrame(() => {
-  render('正在向宿主请求环境信息…');
+/**
+ * Retry until the host answers.
+ *
+ * Two things make a single fire-and-forget request unreliable here:
+ *  - the host may not have attached its listener yet when this page loads;
+ *  - `requestAnimationFrame` is throttled or paused for a sandboxed, possibly
+ *    offscreen iframe (measured: it never fired within 1s).
+ *
+ * Retrying is safe because the host rate-limits and drops duplicate requests
+ * itself, and it guarantees the handshake completes without depending on frame
+ * timing. It stops as soon as a response arrives.
+ */
+let answered = false;
+let attempts = 0;
+const MAX_ATTEMPTS = 12;
+const RETRY_MS = 250;
+
+window.addEventListener('message', (event: MessageEvent<unknown>) => {
+  if (event.source !== window.parent) return;
+  const data: unknown = event.data;
+  if (typeof data !== 'object' || data === null) return;
+  const candidate = data as Record<string, unknown>;
+  if (candidate.type === 'response' || candidate.type === 'error') answered = true;
+}, true);
+
+announceReady();
+render('正在向宿主请求环境信息…');
+requestEnvironment();
+
+const retry = window.setInterval(() => {
+  if (answered || attempts >= MAX_ATTEMPTS) {
+    window.clearInterval(retry);
+    return;
+  }
+  attempts += 1;
   requestEnvironment();
-});
+}, RETRY_MS);
+

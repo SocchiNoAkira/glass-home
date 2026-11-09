@@ -20,6 +20,16 @@ export function SandboxDemo({ environment }: { readonly environment: Omit<Widget
   const [state, setState] = useState<'idle' | 'connected' | 'failed'>('idle');
   const [detail, setDetail] = useState<string>('尚未连接');
 
+  // Depend on the individual values, not the object.
+  //
+  // The parent builds `environment` as a fresh object literal on every render,
+  // so object identity changes whenever *any* settings state moves (a slider
+  // drag, a widget-size refresh). Keying the session on identity tore the
+  // channel down and rebuilt it mid-handshake: the iframe posts its
+  // `environment.get` exactly once, so the rebuilt session never saw it and
+  // the panel settled on "timed out".
+  const { theme, language, reducedMotion, materialQuality } = environment;
+
   const connect = useCallback(() => {
     const frame = frameRef.current;
     if (!frame) return;
@@ -27,7 +37,7 @@ export function SandboxDemo({ environment }: { readonly environment: Omit<Widget
     // sends `environment.get` once its own script has run.
     const session = createSandboxSession(frame, {
       instanceId: 'builtin.sandbox-demo',
-      environment: () => ({ ...environment, size: { w: 2, h: 2 } }),
+      environment: () => ({ theme, language, reducedMotion, materialQuality, size: { w: 2, h: 2 } }),
       onGranted: (granted) => {
         setState('connected');
         setDetail(`已取得环境：${granted.theme === 'dark' ? '深色' : '浅色'} · ${granted.language} · ${granted.materialQuality}`);
@@ -43,12 +53,20 @@ export function SandboxDemo({ environment }: { readonly environment: Omit<Widget
     });
     sessionRef.current?.dispose();
     sessionRef.current = session;
-  }, [environment]);
+  }, [theme, language, reducedMotion, materialQuality]);
 
-  // Attach before the sandbox script can post, otherwise the first request
-  // arrives with no listener and is lost.
+  // Attach the session *before* the frame can load.
+  //
+  // Previously the iframe carried `src` in JSX, so React started the load during
+  // commit while the listener was still only attached in a later effect. The
+  // sandbox posts its request once, so a load that won that race left the host
+  // listening to nothing and the panel settled on "timed out". The src is now
+  // assigned imperatively after the session exists.
   useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
     connect();
+    frame.src = SANDBOX_PAGE;
     return () => {
       sessionRef.current?.dispose();
       sessionRef.current = undefined;
