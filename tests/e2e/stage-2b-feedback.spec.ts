@@ -116,7 +116,18 @@ test('drag feedback is actually painted, sized and themed per intent', async () 
     const row = await itemCenter(page, 'github');
     const intoGutter = row.y + gap.stride + gap.rowHeight - gap.gapY + gap.gapY / 2;
     expect(intoGutter).toBeGreaterThan(0);
+
+    // Sweeping past the gutter must NOT push. This is the regression guard for
+    // "one pixel into the gap shoved the neighbours": at this point the pointer
+    // has only passed through, so the intent must still be a plain move.
     await drag(page, row, { x: row.x, y: intoGutter }, false);
+    const afterSweep = await page.locator('.drag-target__label').textContent().catch(() => null);
+    expect(afterSweep).not.toBe('插入推挤');
+
+    // Holding still on the same gutter completes the dwell and only then
+    // becomes an insertion.
+    await page.mouse.move(row.x, intoGutter);
+    await expect(page.locator('.drag-target__label')).toHaveText('插入推挤', { timeout: 5000 });
     const insert = await page.locator('.drag-target').evaluate((node) => ({
       kind: node.className,
       borderStyle: getComputedStyle(node).borderTopStyle,

@@ -12,6 +12,7 @@ import {
   resolveDropIntent,
   shouldResolveIntent,
 } from '@/src/domain/interaction/dragIntent';
+import { advanceDwell, dwellKeyFor, dwellRemaining, INSERT_DWELL_MS, type DwellState } from '@/src/domain/interaction/dragDwell';
 import { exceedsClickDragThreshold } from '@/src/domain/interaction/pointerIntent';
 import { localPointFromEvent, measureGridMetrics } from './gridMetrics';
 
@@ -43,6 +44,19 @@ interface DragSession {
   readonly startY: number;
   started: boolean;
   lastSignature: string | undefined;
+  /** In-progress gutter dwell; `undefined` when not hovering a gutter. */
+  dwell: DwellState | undefined;
+  /**
+   * Pending dwell timeout.
+   *
+   * A pointer that stops moving emits no further `pointermove`, so dwelling
+   * cannot be detected from events alone — the timer is what lets "hold still
+   * for a moment" actually complete.
+   */
+  dwellTimer: number | undefined;
+  /** Last pointer position seen, reused when the timer fires on a still pointer. */
+  lastX: number;
+  lastY: number;
 }
 
 export interface GridDragOptions {
@@ -99,7 +113,12 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
   const endSession = useCallback((restoreElement: boolean) => {
     const session = sessionRef.current;
     sessionRef.current = undefined;
-    if (session && restoreElement) session.element.style.transform = '';
+    if (session) {
+      // A pending dwell timer would otherwise fire after the drag is over and
+      // preview against a session that no longer exists.
+      if (session.dwellTimer !== undefined) window.clearTimeout(session.dwellTimer);
+      if (restoreElement) session.element.style.transform = '';
+    }
     releaseCapture(session);
     metricsRef.current = undefined;
     setInstanceId(undefined);
@@ -149,6 +168,10 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
       startY: event.clientY,
       started: false,
       lastSignature: undefined,
+      dwell: undefined,
+      dwellTimer: undefined,
+      lastX: event.clientX,
+      lastY: event.clientY,
     };
   };
 
@@ -181,14 +204,54 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
     const measured = metricsRef.current;
     if (!grid || !measured) return;
 
+    session.lastX = event.clientX;
+    session.lastY = event.clientY;
+
     // The dragged element follows the pointer visually; its grid slot stays on
     // the origin (below/above in HomeGrid) so the preview can move everything else.
     session.element.style.transform = `translate3d(${event.clientX - session.startX}px, ${event.clientY - session.startY}px, 0)`;
 
     if (measured.columns !== options.columns) return;
     const point = localPointFromEvent(grid, event.clientX, event.clientY);
-    const nextIntent = resolveDropIntent(hitCell(point, measured), session.layout, session.item, options.columns);
+    const hit = hitCell(point, measured);
 
+    /**
+     * Advance the gutter dwell, then resolve the intent.
+     *
+     * An insertion only becomes real once the pointer has held still on the
+     * same gutter for `INSERT_DWELL_MS`. Until then the intent is resolved as if
+     * the pointer were just inside the neighbouring cell, so sweeping past a
+     * gutter moves rather than shoves — which is what makes precise placement
+     * possible again.
+     */
+    const now = performance.now();
+    const dwell = advanceDwell(session.dwell, hit, point, now);
+    session.dwell = dwell.state;
+    // A satisfied dwell still needs its state kept, so that "still holding here"
+    // does not cancel the preview it just created.
+    const settled = dwell.state !== undefined && now - dwell.state.since >= INSERT_DWELL_MS;
+
+    if (dwell.state && !settled) {
+      // Timer fallback: a pointer that stops moving emits no more pointermove,
+      // so without this a user who simply holds still would never trigger.
+      scheduleDwell(session, dwellRemaining(dwell.state, now));
+    } else if (session.dwellTimer !== undefined) {
+      window.clearTimeout(session.dwellTimer);
+      session.dwellTimer = undefined;
+    }
+
+    // While unsettled, treat a gutter hit as its left/top neighbour's body.
+    const effectiveHit = (!settled && (hit.inGapX || hit.inGapY)) ? { ...hit, inGapX: false, inGapY: false } : hit;
+    applyIntent(session, resolveDropIntent(effectiveHit, session.layout, session.item, options.columns));
+  };
+
+  /**
+   * Turns a resolved intent into a preview (or a cancel).
+   *
+   * Extracted so the pointermove path and the dwell timer produce exactly the
+   * same behaviour; duplicating it is how the two drift apart.
+   */
+  function applyIntent(session: DragSession, nextIntent: DropIntent): void {
     // Re-solving on every wobble inside one cell would flood the solver and the save queue.
     if (!shouldResolveIntent(session.lastSignature, nextIntent)) return;
     session.lastSignature = intentSignature(nextIntent);
@@ -202,13 +265,13 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
     if (unchanged) {
       if (previewActiveRef.current) {
         previewActiveRef.current = false;
-        options.cancel();
+        optionsRef.current.cancel();
       }
       return;
     }
 
-    const accepted = options.preview(
-      options.columns,
+    const accepted = optionsRef.current.preview(
+      optionsRef.current.columns,
       commandForIntent(nextIntent, session.instanceId),
       preferenceForIntent(nextIntent),
     );
@@ -217,7 +280,31 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
     // reaches the solver's own reflow fallback once the push chain gives up,
     // whatever preference produced the command. Retrying here would repeat the
     // same failure and could clear the explanation the solver already wrote.
-  };
+  }
+
+  /** Arms the dwell timer for one session; clearing any previous one. */
+  function scheduleDwell(session: DragSession, delayMs: number): void {
+    if (session.dwellTimer !== undefined) window.clearTimeout(session.dwellTimer);
+    session.dwellTimer = window.setTimeout(() => {
+      session.dwellTimer = undefined;
+      const live = sessionRef.current;
+      if (!live || live !== session || !session.dwell) return;
+      const grid = gridRef.current;
+      const measured = metricsRef.current;
+      if (!grid || !measured) return;
+      // Re-hit-test at the last known pointer position. If the pointer has since
+      // left the gutter, this resolves as a plain move and simply supersedes it.
+      const point = localPointFromEvent(grid, session.lastX, session.lastY);
+      const hit = hitCell(point, measured);
+      const key = dwellKeyFor(hit);
+      const stillHere = key !== undefined
+        && session.dwell.key.cellX === key.cellX
+        && session.dwell.key.cellY === key.cellY
+        && session.dwell.key.axis === key.axis;
+      if (!stillHere) { session.dwell = undefined; return; }
+      applyIntent(session, resolveDropIntent(hit, session.layout, session.item, optionsRef.current.columns));
+    }, Math.max(0, delayMs));
+  }
 
   const onPointerUp = (event: ReactPointerEvent<HTMLElement>) => {
     const session = sessionRef.current;
