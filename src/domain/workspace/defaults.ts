@@ -1,4 +1,4 @@
-import { GRID_BREAKPOINTS, type GridColumns, type LayoutItem } from '@/src/domain/grid/model';
+import { GRID_BREAKPOINTS, findFirstFit, type GridColumns, type LayoutItem } from '@/src/domain/grid/model';
 import { SHORTCUT_SEEDS } from '@/src/features/home/data';
 import {
   BUILTIN_WIDGET_IDS,
@@ -39,30 +39,49 @@ export function createDefaultLayouts(shortcuts: readonly Shortcut[]): Record<Gri
     const add = (instanceId: string, x: number, y: number, w: number, h: number, order: number) => {
       rows.push({ instanceId, kind: 'shortcut', breakpoint: columns, locked: false, order, x, y, w, h });
     };
+    // The three original builtins keep exactly the cells they had in stage 2A.
+    // Moving them would change the accepted default composition.
     if (columns === 10) {
       add('builtin.clock', 0, 0, 6, 2, 0);
       add('builtin.calendar', 6, 0, 4, 2, 1);
       add('builtin.search', 0, 2, 6, 1, 2);
-      add('builtin.todo', 6, 2, 4, 2, 3);
     } else if (columns === 8) {
       add('builtin.clock', 0, 0, 4, 2, 0);
       add('builtin.calendar', 4, 0, 4, 2, 1);
       add('builtin.search', 0, 2, 6, 1, 2);
-      add('builtin.todo', 6, 2, 2, 2, 3);
     } else {
-      // 5 columns: calendar needs at least 4 wide, so it keeps its own row and
-      // the to-do widget takes the free 2x2 block beside the search row's tail.
       add('builtin.clock', 0, 0, 5, 2, 0);
       add('builtin.search', 0, 2, 5, 1, 1);
       add('builtin.calendar', 0, 3, 4, 2, 2);
-      add('builtin.todo', 0, 5, 2, 2, 3);
     }
-    const firstShortcutRow = columns === 5 ? 7 : 4;
+    const firstShortcutRow = columns === 5 ? 5 : 3;
     shortcuts.forEach((shortcut, index) => {
       add(shortcut.id, index % columns, firstShortcutRow + Math.floor(index / columns), 1, 1, index + 3);
     });
+
+    // The to-do widget is appended into the first free cell *after* every
+    // existing object, never in the middle of the accepted composition. The
+    // stage 3 migration uses the same first-fit rule, so a fresh workspace and
+    // an upgraded one end up with the widget in the same place.
+    rows.push({
+      instanceId: 'builtin.todo', kind: 'widget', breakpoint: columns,
+      locked: false, order: rows.length,
+      ...placeTodo(rows, columns),
+    });
+
     return [columns, rows.map((item) => widgets.some((widget) => widget.instanceId === item.instanceId) ? { ...item, kind: 'widget' } : item)];
   })) as Record<GridColumns, LayoutItem[]>;
+}
+
+/** Default to-do footprint; the grid constraints allow 2x2, 4x2 and 4x4. */
+const TODO_DEFAULT_FOOTPRINT = { w: 2, h: 2 } as const;
+
+function placeTodo(items: readonly LayoutItem[], columns: GridColumns): { x: number; y: number; w: number; h: number } {
+  const size = { w: Math.min(TODO_DEFAULT_FOOTPRINT.w, columns), h: TODO_DEFAULT_FOOTPRINT.h };
+  const spot = findFirstFit(items, size, columns);
+  // `findFirstFit` scans one row past the content, so this always resolves on
+  // an otherwise legal layout; the fallback keeps the type non-optional.
+  return spot ? { ...spot, ...size } : { x: 0, y: 0, ...size };
 }
 
 export function createDefaultWorkspace(now = new Date().toISOString()): Workspace {

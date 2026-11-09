@@ -129,8 +129,15 @@ test('deletes and clears completed items, and the clear button disables when emp
     await expect(page.locator('.todo-widget__item')).toHaveCount(2);
 
     // Remove the remaining first item through its delete affordance.
+    //
+    // Locate by `data-todo-id`, not by position: completing an item reorders the
+    // list (unfinished first), so `.first()` may point at a different element by
+    // the time the click lands.
     await page.locator('.todo-widget__item').first().hover();
-    await page.locator('.todo-widget__remove').first().click();
+    const firstId = await page.locator('.todo-widget__item').first().getAttribute('data-todo-id');
+    expect(firstId).toBeTruthy();
+    await page.locator(`[data-todo-id="${firstId}"] .todo-widget__remove`).click();
+    await expect(page.locator(`[data-todo-id="${firstId}"]`)).toHaveCount(0);
     await expect(page.locator('.todo-widget__item')).toHaveCount(1);
 
     await page.reload();

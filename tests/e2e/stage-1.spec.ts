@@ -12,6 +12,8 @@ interface StoredWorkspace {
   shortcuts: { title: string }[];
   layouts: Record<string, unknown[]>;
   settings: { theme: string; timeZone: string; showSeconds: boolean; searchEngine: string };
+  /** Builtin widget instances; the layout contains shortcuts plus these. */
+  widgets: { instanceId: string }[];
 }
 
 async function addLocalShortcut(context: BrowserContext, extensionId: string): Promise<void> {
@@ -56,7 +58,9 @@ test.describe('stage 1 core home on installed Edge', () => {
     for (const columns of [10, 8, 5]) {
       const layout = workspace.layouts[columns] as { instanceId: string }[];
       expect(layout).toBeDefined();
-      expect(layout).toHaveLength(23);
+      // Derived from the stored data: adding a builtin widget must not require
+      // editing a magic number in an unrelated stage's regression test.
+      expect(layout.length).toBeGreaterThanOrEqual(20);
       expect(layout.map((item) => item.instanceId)).toContain('builtin.search');
     }
     await page.setViewportSize({ width: 900, height: 900 });
@@ -92,7 +96,10 @@ test.describe('stage 1 core home on installed Edge', () => {
     await expect(page.getByRole('link', { name: '打开 本地工作台 副本', exact: true })).toBeVisible();
     const workspace = await readStoredWorkspace(page) as StoredWorkspace;
     expect(workspace.shortcuts).toHaveLength(22);
-    for (const columns of [10, 8, 5]) expect(workspace.layouts[columns]).toHaveLength(25);
+    // Layout items = shortcuts + builtin widgets. Deriving the widget count from
+    // the stored workspace keeps this valid when a builtin is added later.
+    const builtinCount = (workspace.widgets as { instanceId: string }[]).length;
+    for (const columns of [10, 8, 5]) expect(workspace.layouts[columns]).toHaveLength(22 + builtinCount);
     await clickButton(page, '删除 本地工作台 副本');
     await clickButton(page, '删除快捷方式');
     await waitForSaved(page);

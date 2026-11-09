@@ -3,10 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Glass Home Widget Sandbox Probe</title>
+    <title>Glass Home 沙箱组件（开发示例）</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 14px 16px;
+        font: 12px/1.5 ui-sans-serif, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: #f2eef7;
+        background: linear-gradient(140deg, #4a4358, #6b5a6f 60%, #3f3a4e);
+        border-radius: 18px;
+        overflow: hidden;
+      }
+      h1 { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .4px; }
+      p#status { margin: 0 0 10px; color: #cbc2d8; font-size: 11px; }
+      .env-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid #ffffff1a; }
+      .env-row span { color: #b8aec7; font-size: 10px; }
+      .env-row strong { font-weight: 500; font-size: 11px; }
+      #environment[data-widget-environment="received"] { animation: none; }
+      footer { margin-top: 10px; color: #9d93ad; font-size: 10px; }
+    </style>
   </head>
   <body>
-    <p id="status">Sandbox loaded</p>
+    <h1>沙箱组件（开发示例）</h1>
+    <p id="status">沙箱已加载，等待宿主握手…</p>
+    <div id="environment"></div>
+    <footer>此页无法访问父页面 DOM 与扩展 API，仅可读取环境信息。</footer>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

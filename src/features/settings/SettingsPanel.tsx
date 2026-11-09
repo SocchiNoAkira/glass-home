@@ -5,6 +5,7 @@ import type { WorkspaceAsset, WorkspaceSettings } from '@/src/domain/workspace/m
 import { validateSearchTemplate } from '@/src/domain/search/search';
 import { validateImageFile } from '@/src/infrastructure/persistence/assetRepository';
 import { Diagnostics } from './Diagnostics';
+import { SandboxDemo } from './SandboxDemo';
 
 export type SettingsTab = 'appearance' | 'search' | 'time' | 'data';
 
@@ -91,6 +92,12 @@ export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUr
         <div className="data-actions"><button className="button button--secondary" disabled={busy} onClick={() => void onExport().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : '导出失败'))}><Download size={16} />导出备份</button><button className="button button--secondary" disabled={busy} onClick={() => importRef.current?.click()}><Upload size={16} />导入备份</button><input ref={importRef} className="sr-only" type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void onImport(file).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : '导入失败')); event.target.value = ''; }} /></div>
         <div className="danger-zone"><h3>恢复默认主屏幕</h3><p>需要二次确认。此操作会替换当前设置、布局、快捷方式和本地壁纸。</p><button className="button button--danger button--small" disabled={busy} onClick={onReset}><RotateCcw size={15} />恢复默认</button></div>
         <Diagnostics />
+        <SandboxDemo environment={{
+          theme: draft.theme === 'light' ? 'light' : 'dark',
+          language: document.documentElement.lang || 'zh-CN',
+          reducedMotion: draft.reducedMotion,
+          materialQuality: draft.materialQuality,
+        }} />
       </div>}
     </div>
     {error && <p className="form-error" role="alert">{error}</p>}

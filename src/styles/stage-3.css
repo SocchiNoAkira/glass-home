@@ -44,6 +44,27 @@
 .widget-error__retry:hover { background: #ffffff20; }
 .widget-error__retry:focus-visible { outline: 2px solid #ffffffb3; outline-offset: 1px; }
 
+/* Sandbox demo panel: proves the message channel inside the real extension. */
+.sandbox-demo { margin-top: 18px; padding-top: 16px; border-top: 1px solid #ffffff1a; }
+.sandbox-demo h3 { margin: 0 0 6px; font-size: 13px; font-weight: 550; }
+.sandbox-demo__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0;
+  font-size: 11px;
+  color: var(--text-soft);
+}
+.sandbox-demo__status[data-sandbox-state="connected"] { color: #a8d8b9; }
+.sandbox-demo__status[data-sandbox-state="failed"] { color: #f0b8c0; }
+.sandbox-demo__frame {
+  width: 100%;
+  height: 210px;
+  border: 1px solid #ffffff26;
+  border-radius: 14px;
+  background: transparent;
+}
+
 .todo-widget {
   display: flex;
   flex-direction: column;
@@ -116,6 +137,11 @@
   text-decoration-thickness: 1px;
 }
 
+/* Reveal the delete affordance on hover, keyboard focus or pointer focus.
+   `opacity: 0` alone is a usability trap: the element is still in the click
+   path, so a click that lands before the transition finishes hits an invisible
+   target. Keeping it present but dim, and fully opaque on any interaction,
+   avoids that race while still keeping the list visually quiet. */
 .todo-widget__remove {
   flex-shrink: 0;
   width: 20px;
@@ -125,7 +151,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--text-muted);
-  opacity: 0;
+  opacity: .45;
   transition: opacity 160ms ease, background 160ms ease;
 }
 
