@@ -85,12 +85,15 @@ test.describe('stage 1 core home on installed Edge', () => {
     await expect(page.getByRole('link', { name: '打开 本地项目', exact: true })).toBeVisible();
     await waitForSaved(page);
     await clickButton(page, '编辑主屏幕');
-    await clickButton(page, '编辑 本地项目');
+    // Edit and duplicate moved behind the "..." badge; the X badge removes.
+    await clickButton(page, '更多操作：本地项目');
+    await clickButton(page, '编辑');
     await page.getByLabel('名称', { exact: true }).fill('本地工作台');
     await clickButton(page, '保存更改');
     await waitForSaved(page);
     await expect(page.getByRole('link', { name: '打开 本地工作台', exact: true })).toBeVisible();
-    await clickButton(page, '复制 本地工作台');
+    await clickButton(page, '更多操作：本地工作台');
+    await clickButton(page, '复制');
     await waitForSaved(page);
     await expect(page.locator('.shortcut')).toHaveCount(22);
     await expect(page.getByRole('link', { name: '打开 本地工作台 副本', exact: true })).toBeVisible();
@@ -100,7 +103,7 @@ test.describe('stage 1 core home on installed Edge', () => {
     // the stored workspace keeps this valid when a builtin is added later.
     const builtinCount = (workspace.widgets as { instanceId: string }[]).length;
     for (const columns of [10, 8, 5]) expect(workspace.layouts[columns]).toHaveLength(22 + builtinCount);
-    await clickButton(page, '删除 本地工作台 副本');
+    await clickButton(page, '移除 本地工作台 副本');
     await clickButton(page, '删除快捷方式');
     await waitForSaved(page);
     await expect(page.locator('.shortcut')).toHaveCount(21);
@@ -162,12 +165,17 @@ test.describe('stage 1 core home on installed Edge', () => {
     await clickButton(page, '下一月');
     await clickButton(page, '上一月');
     await expect(page.locator('.month-calendar__days .is-today')).toHaveCount(1);
-    await clickButton(page, '搜索引擎：Google，点击更改');
+    // The engine switcher no longer lives inside the search box (it competed
+    // with the input for attention); Settings is the only place to change it.
+    await expect(page.locator('.search-box__engine')).toHaveCount(0);
+    await clickButton(page, '打开设置');
+    await clickTab(page, '搜索');
     await expect(page.locator('#search-engine')).toHaveAccessibleName('搜索引擎');
     await page.locator('#search-engine').selectOption('bing');
     await clickButton(page, '保存设置');
     await waitForSaved(page);
-    await expect(page.getByRole('button', { name: '搜索引擎：Bing，点击更改' })).toBeVisible();
+    await expect(page.locator('.search-box__engine')).toHaveCount(0);
+    // The setting still drives the query even though the control is gone.
     await page.reload();
     await waitForSaved(page);
     const workspace = await readStoredWorkspace(page) as StoredWorkspace;

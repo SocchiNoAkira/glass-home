@@ -1,3 +1,4 @@
+import { useLayoutEffect, useState } from 'react';
 import type { GridColumns, LayoutItem } from '@/src/domain/grid/model';
 import { readingOrder } from '@/src/domain/grid/model';
 import type { Shortcut, Workspace } from '@/src/domain/workspace/model';
@@ -10,8 +11,44 @@ import type { WidgetEnvironment } from '@/src/domain/widget/environment';
 import type { WidgetStorage } from '@/src/infrastructure/persistence/widgetStorage';
 import { ShortcutIcon } from '@/src/features/shortcuts/ShortcutIcon';
 import { WidgetHost } from '@/src/features/widget/WidgetHost';
+import { WidgetEditBadge } from './EditBadges';
 import { useGridDrag } from './useGridDrag';
 import { useGridKeyboard } from './useGridKeyboard';
+
+/** Display names for built-in widgets, used in the badge's accessible label. */
+const WIDGET_LABELS: Readonly<Record<string, string>> = {
+  'builtin.clock': '时钟',
+  'builtin.search': '搜索',
+  'builtin.calendar': '日历',
+  'builtin.todo': '待办',
+};
+
+/**
+ * Cell texture for edit mode, aligned to the real tracks.
+ *
+ * The old decoration was a fixed 15px dot grid, which matched nothing: rows are
+ * 92px while columns are fractional, so it read as a five-column grid you could
+ * never actually drop into — the eye had nothing to aim at.
+ *
+ * Each tile is one *stride* (cell + gutter), so a 1px line lands exactly on
+ * every column's left edge. Tiling by cell width instead would drift by one
+ * gutter per column, which is the mistake this avoids.
+ */
+function gridOverlayStyle(columns: GridColumns, gapX: number, gapY: number, rowHeight: number): React.CSSProperties {
+  const cellW = `calc((100% - ${gapX * (columns - 1)}px) / ${columns})`;
+  const strideX = `calc(${cellW} + ${gapX}px)`;
+  const strideY = `${rowHeight + gapY}px`;
+  return {
+    backgroundImage:
+      // Left edge of every column.
+      'linear-gradient(to right, #ffffff24 1px, transparent 1px),' +
+      // Top edge of every row.
+      'linear-gradient(to bottom, #ffffff24 1px, transparent 1px)',
+    backgroundSize: `${strideX} ${strideY}`,
+    backgroundPosition: '0 0',
+    backgroundRepeat: 'repeat',
+  };
+}
 
 /** Absolute CSS pixel rectangle for one grid rect, derived from the one-off measurement. */
 function rectToPixels(metrics: GridMetrics, rect: Readonly<{ x: number; y: number; w: number; h: number }>) {
@@ -41,7 +78,7 @@ function DragOverlay({ metrics, origin, intent }: {
   </>;
 }
 
-export function HomeGrid({ workspace, columns, editMode, environment, widgetStorage, widgetDataVersion, onChooseSearchEngine, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout, onWidgetError }: {
+export function HomeGrid({ workspace, columns, editMode, environment, widgetStorage, widgetDataVersion, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout, onWidgetError }: {
   readonly workspace: Workspace;
   readonly columns: GridColumns;
   readonly editMode: boolean;
@@ -50,7 +87,6 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
   readonly widgetStorage: WidgetStorage | undefined;
   /** Bumped when widget data is cleared outside a widget, to force a re-read. */
   readonly widgetDataVersion: number;
-  readonly onChooseSearchEngine: () => void;
   readonly onEditShortcut: (shortcut: Shortcut) => void;
   readonly onDuplicateShortcut: (shortcut: Shortcut) => void;
   readonly onRemoveShortcut: (shortcut: Shortcut) => void;
@@ -77,6 +113,31 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
     commit: onCommitLayout,
   });
 
+  /**
+   * Real track geometry, measured after layout so the texture can align to it.
+   *
+   * These values differ per breakpoint (rows are 92px wide, 82px narrow; gaps
+   * change too), so they must be read from the rendered grid rather than
+   * hard-coded. Measured in a layout effect because the ref is null during
+   * render, and re-measured on resize via `columns`.
+   */
+  const [tracks, setTracks] = useState<{ rowHeight: number; gapX: number; gapY: number }>();
+  useLayoutEffect(() => {
+    if (!editMode) { setTracks(undefined); return; }
+    const grid = drag.gridRef.current;
+    if (!grid) return;
+    const style = window.getComputedStyle(grid);
+    const rowHeight = Number.parseFloat(style.gridAutoRows);
+    const gapY = Number.parseFloat(style.rowGap);
+    const gapX = Number.parseFloat(style.columnGap);
+    if (!Number.isFinite(rowHeight) || rowHeight <= 0) return;
+    setTracks({
+      rowHeight,
+      gapX: Number.isFinite(gapX) ? gapX : 0,
+      gapY: Number.isFinite(gapY) ? gapY : 0,
+    });
+  }, [editMode, columns, drag.gridRef]);
+
   const renderItem = (item: LayoutItem) => {
     // Widgets go through the host so error isolation and the environment
     // handoff are identical for every built-in, including the to-do widget.
@@ -87,13 +148,37 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
         environment={{ ...environment, size: { w: item.w, h: item.h } }}
         storage={widgetStorage}
         widgetDataVersion={widgetDataVersion}
-        onChooseSearchEngine={onChooseSearchEngine}
         onWidgetError={onWidgetError}
       />;
     }
     const shortcut = shortcuts.get(item.instanceId);
     if (!shortcut) return <div className="grid-error" role="alert">快捷方式数据缺失</div>;
-    return <ShortcutIcon shortcut={shortcut} editMode={editMode} onEdit={onEditShortcut} onDuplicate={onDuplicateShortcut} onRemove={onRemoveShortcut} />;
+    return <ShortcutIcon
+      shortcut={shortcut}
+      editMode={editMode}
+      locked={item.locked}
+      onEdit={onEditShortcut}
+      onDuplicate={onDuplicateShortcut}
+      onRemove={onRemoveShortcut}
+      onToggleLock={() => toggleLock(item)}
+    />;
+  };
+
+  /**
+   * Locks or unlocks one object straight from its badge.
+   *
+   * Locking is a layout transaction like any other, so it goes through the
+   * same preview→commit path the inspector uses: a badge must not write a
+   * layout the solver never validated.
+   */
+  const toggleLock = (item: LayoutItem) => {
+    const accepted = onPreviewLayout(columns, {
+      type: 'set-lock',
+      instanceId: item.instanceId,
+      locked: !item.locked,
+    });
+    if (!accepted) return;
+    void onCommitLayout().catch(() => undefined);
   };
 
   const dragging = drag.instanceId;
@@ -103,7 +188,9 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
       ref={drag.gridRef}
       className={`unified-grid unified-grid--${columns} ${editMode ? 'unified-grid--editing' : ''} ${dragging ? 'unified-grid--dragging' : ''}`}
       data-testid="unified-grid" data-columns={columns}
-      style={{ '--grid-columns': columns } as React.CSSProperties}
+      style={editMode && tracks
+        ? { '--grid-columns': columns, ...gridOverlayStyle(columns, tracks.gapX, tracks.gapY, tracks.rowHeight) } as React.CSSProperties
+        : { '--grid-columns': columns } as React.CSSProperties}
       aria-label={`主屏幕统一网格，${columns} 列`}
       data-drag-instance={dragging}
       data-drag-intent={drag.intent?.kind}
@@ -128,7 +215,13 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
             onKeyDown={editMode ? keyboard.onKeyDown : undefined}
           >
             {renderItem(item)}
-            {editMode && item.kind === 'widget' && <span className="grid-item__edit-badge" title={item.locked ? '已锁定，不能拖动' : '拖动可移动'}>{item.locked ? '已锁定' : '组件'}</span>}
+            {/*
+              Widgets get the "..." badge but not the X: the Workspace schema
+              requires every built-in to exist (`validateWorkspace` rejects a
+              workspace missing one), so a remove control could only fail.
+              Shortcuts carry their own badges inside ShortcutIcon.
+            */}
+            {editMode && item.kind === 'widget' && <WidgetEditBadge label={WIDGET_LABELS[item.instanceId] ?? item.instanceId} locked={item.locked} onToggleLock={() => toggleLock(item)} />}
           </div>
         );
       })}

@@ -35,13 +35,25 @@
 .shortcut__icon { width: 58px; height: 58px; border-radius: 16px; }
 .shortcut__initials { font-size: 24px; }
 .shortcut__label { font-size: 12px; }
-.shortcut__actions { position: absolute; inset: -8px -2px auto; height: 64px; pointer-events: none; z-index: 2; }
-.shortcut__actions button { position: absolute; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 50%; pointer-events: auto; color: #514458; background: #f6f2f5; border: 1px solid #ffffffb3; box-shadow: 0 2px 5px #00000020; }
-.shortcut__delete { left: -2px; top: -4px; }
-.shortcut__edit { right: -2px; top: -4px; }
-.shortcut__duplicate { right: -2px; bottom: -1px; }
 .shortcut__drag-hint { position: absolute; bottom: 4px; right: 6px; font-size: 11px; opacity: .4; }
-.unified-grid--editing { border: 1px dashed #ffffff40; border-radius: 25px; padding: 16px 12px; background-image: radial-gradient(#ffffff28 .7px, transparent .7px); background-size: 15px 15px; }
+/*
+ * Edit-mode grid outline.
+ *
+ * Two things are deliberately NOT here any more:
+ * - `padding`: it changed the padding box on entering edit mode, so the grid
+ *   shifted by 12-16px and every object moved — the same alignment problem the
+ *   preview banner caused, just from a different source. The outline is now
+ *   drawn outside the content box instead.
+ * - the 15px radial-gradient dot pattern: it was unrelated to the real tracks
+ *   (92px rows, fractional column widths), so it read as a grid that does not
+ *   match what you can actually drop into. The real cell texture is generated
+ *   per column count by `gridOverlayStyle` in HomeGrid.
+ */
+.unified-grid--editing {
+  outline: 1px dashed #ffffff40;
+  outline-offset: 14px;
+  border-radius: 8px;
+}
 .unified-grid--editing .grid-item--widget { outline: 1px dashed #ffffff47; outline-offset: 5px; border-radius: 21px; }
 .grid-item__edit-badge { position: absolute; top: -10px; left: 8px; z-index: 2; background: #f3edf2; color: #4d3e56; border-radius: 4px; padding: 2px 5px; font-size: 9px; pointer-events: none; }
 .grid-item--builtin-search .grid-item__edit-badge, .grid-item--builtin-clock .grid-item__edit-badge { left: auto; right: 5px; }

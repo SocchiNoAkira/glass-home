@@ -24,7 +24,32 @@
 .layout-preview small { color: var(--text-muted); font-size: 11px; line-height: 1.7; }
 .layout-preview__actions { display: flex; flex-shrink: 0; gap: 8px; }
 .layout-inspector__hint { display: flex; align-items: center; gap: 6px; margin-top: 16px; color: var(--text-muted); font-size: 11px; }
-.layout-preview-banner { margin-bottom: 14px; color: var(--text-soft); font-size: 12px; }
+/*
+ * The preview notice floats over the top of the grid instead of sitting in the
+ * flow. As a normal block it inserted a line above the grid, shifting every
+ * object down one row as soon as a drag preview appeared — the content under
+ * the pointer moved, which made aiming impossible and looked like jitter.
+ *
+ * `pointer-events: none` keeps it from swallowing drag gestures that pass
+ * through that strip.
+ */
+.layout-preview-banner {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #2b2438d9;
+  border: 1px solid #ffffff26;
+  color: var(--text-soft);
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px #1a1526 40%;
+}
+.theme-light .layout-preview-banner { background: #fffaf3e6; border-color: #0000001f; color: #4b4157; }
 .theme-light .layout-inspector__controls select option { color: #43384a; background: #f2e9ee; }
 @media (max-width: 719px) {
   .layout-inspector__controls { grid-template-columns: minmax(0, 1fr) 65px 65px; gap: 9px; }

@@ -23,11 +23,10 @@ export interface WidgetHostProps {
   readonly storage: WidgetStorage | undefined;
   /** Bumps when widget data is cleared outside the widget, forcing a re-read. */
   readonly widgetDataVersion: number;
-  readonly onChooseSearchEngine: () => void;
   readonly onWidgetError: (instanceId: string, message: string) => void;
 }
 
-export function WidgetHost({ item, workspace, environment, storage, widgetDataVersion, onChooseSearchEngine, onWidgetError }: WidgetHostProps) {
+export function WidgetHost({ item, workspace, environment, storage, widgetDataVersion, onWidgetError }: WidgetHostProps) {
   const instance = workspace.widgets.find((widget) => widget.instanceId === item.instanceId);
 
   if (item.instanceId === 'builtin.clock') {
@@ -37,7 +36,7 @@ export function WidgetHost({ item, workspace, environment, storage, widgetDataVe
   }
   if (item.instanceId === 'builtin.search') {
     return <WidgetFrame instanceId={item.instanceId} environment={environment}>
-      <SearchWidget settings={workspace.settings} onChooseEngine={onChooseSearchEngine} />
+      <SearchWidget settings={workspace.settings} />
     </WidgetFrame>;
   }
   if (item.instanceId === 'builtin.calendar') {

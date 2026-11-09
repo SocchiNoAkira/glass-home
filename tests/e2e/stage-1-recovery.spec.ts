@@ -34,7 +34,7 @@ test('shows an empty state after deleting every shortcut without losing builtins
     const page = await openNewTab(context, extensionId);
     await clickButton(page, '编辑主屏幕');
     for (const title of titles) {
-      await clickButton(page, `删除 ${title}`);
+      await clickButton(page, `移除 ${title}`);
       await clickButton(page, '删除快捷方式');
       await waitForSaved(page);
     }

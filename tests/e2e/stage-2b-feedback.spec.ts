@@ -97,8 +97,12 @@ test('drag feedback is actually painted, sized and themed per intent', async () 
     await expect(page.locator('.drag-target')).toHaveCount(0);
 
     // An insertion target is dashed and carries the insertion accent line.
-    // The gutter is only ~16% of a row stride, so it must be located from the
-    // measured row height and gap rather than a guessed fraction of the stride.
+    //
+    // The gutter is a narrow strip between two cell bodies, so it must be found
+    // from the rendered cell edges. Deriving it from the *bottom edge* of the
+    // row-3 cell plus half the gap is exact; adding whole strides to a cell
+    // centre (as an earlier version did) lands inside the next row's body and
+    // silently tests a swap instead of an insertion.
     const gap = await page.evaluate(() => {
       const first = document.querySelector<HTMLElement>('[data-grid-y="3"][data-instance-id]');
       const second = document.querySelector<HTMLElement>('[data-grid-y="4"][data-instance-id]');
@@ -106,16 +110,23 @@ test('drag feedback is actually painted, sized and themed per intent', async () 
       const grid = document.querySelector<HTMLElement>('[data-testid="unified-grid"]');
       if (!grid) throw new Error('missing grid');
       const style = getComputedStyle(grid);
+      const firstBottom = first.getBoundingClientRect().bottom;
+      const secondTop = second.getBoundingClientRect().top;
       return {
         rowHeight: parseFloat(style.gridAutoRows),
         gapY: parseFloat(style.rowGap),
-        stride: second.getBoundingClientRect().top - first.getBoundingClientRect().top,
+        // The real gutter, measured instead of assumed.
+        gutterTop: firstBottom,
+        gutterBottom: secondTop,
       };
     });
-    // From the first shortcut row, one full row down plus half the gutter.
     const row = await itemCenter(page, 'github');
-    const intoGutter = row.y + gap.stride + gap.rowHeight - gap.gapY + gap.gapY / 2;
-    expect(intoGutter).toBeGreaterThan(0);
+    const intoGutter = (gap.gutterTop + gap.gutterBottom) / 2;
+    // Guard against a layout change that would silently make this land in a
+    // cell body: the probe point must sit strictly inside the gap.
+    expect(gap.gutterBottom).toBeGreaterThan(gap.gutterTop);
+    expect(intoGutter).toBeGreaterThan(gap.gutterTop);
+    expect(intoGutter).toBeLessThan(gap.gutterBottom);
 
     // Sweeping past the gutter must NOT push. This is the regression guard for
     // "one pixel into the gap shoved the neighbours": at this point the pointer

@@ -64,12 +64,25 @@ async function readStoreCounts(page: Page): Promise<{ workspaces: number; assets
  * immediately against the page that is already loaded. Polling the stores is the
  * only honest synchronisation point: it waits for the new page to recreate the
  * default workspace, and still fails if that never happens.
+ *
+ * A poll can land mid-navigation, where `page.evaluate` throws
+ * "Execution context was destroyed". That is not a failure — it means the
+ * reload is in progress — so it is treated as "not settled yet" and retried.
  */
 async function waitForClearedState(page: Page): Promise<void> {
   await expect.poll(async () => {
-    const counts = await readStoreCounts(page);
-    return counts.assets === 0 && counts.widgetData === 0 && counts.workspaces === 1;
-  }, { timeout: 10_000, intervals: [250, 500, 1000] }).toBe(true);
+    try {
+      const counts = await readStoreCounts(page);
+      return counts.assets === 0 && counts.widgetData === 0 && counts.workspaces === 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Only navigation races are retried; a genuine read failure should fail.
+      if (/Execution context was destroyed|because of a navigation|Target page, context or browser has been closed/.test(message)) {
+        return false;
+      }
+      throw error;
+    }
+  }, { timeout: 15_000, intervals: [250, 500, 1000] }).toBe(true);
 }
 
 async function openDataTab(page: Page): Promise<void> {

@@ -190,7 +190,19 @@ export function App() {
       <div className="wallpaper__orb wallpaper__orb--peach" /><div className="wallpaper__orb wallpaper__orb--blue" /><div className="wallpaper__orb wallpaper__orb--lilac" />
       <div className="wallpaper__horizon" />
     </div>
-    <div className="wallpaper-overlay" style={{ opacity: workspace.settings.wallpaperOverlay / 100, backdropFilter: `blur(${workspace.settings.wallpaperBlur}px)` }} aria-hidden="true" />
+    {/*
+      The overlay exists to tune the built-in gradients: they are decorative
+      colours that need a darkening/blur wash for text to stay legible. A custom
+      wallpaper is the user's own image, already chosen deliberately, so washing
+      it out with the same veil made the result look wrong — it is only applied
+      when no custom image is set. The blur/opacity controls remain available
+      for the gradient case.
+    */}
+    {!workspace.settings.wallpaperAssetId && <div
+      className="wallpaper-overlay"
+      style={{ opacity: workspace.settings.wallpaperOverlay / 100, backdropFilter: `blur(${workspace.settings.wallpaperBlur}px)` }}
+      aria-hidden="true"
+    />}
     <div className="page-shell">
       <header className="topbar">
         <a className="brand" href="#main-content" aria-label="Glass Home 首页" onClick={(event) => { event.preventDefault(); setEditMode(false); setSettingsTab(undefined); }}>
@@ -205,8 +217,15 @@ export function App() {
         </div>
       </header>
       <main id="main-content" className="main-layout">
+        {/*
+          The preview notice is absolutely positioned and does NOT sit in the
+          flow. As a normal block it added a line above the grid, which shifted
+          every object down by one row the moment a drag preview appeared: the
+          grid underneath the pointer moved, so aiming was impossible and the
+          content visibly jittered as previews came and went.
+        */}
+        {store.preview && <div className="layout-preview-banner" role="status">正在预览未保存的布局；按 Esc 取消。</div>}
         <div className="home-content">
-          {store.preview && <div className="layout-preview-banner" role="status">正在预览未保存的布局；按 Esc 取消。</div>}
           <HomeGrid workspace={store.displayWorkspace ?? workspace} columns={store.columns} editMode={editMode}
             environment={{
               theme: themeDark ? 'dark' : 'light',
@@ -216,7 +235,6 @@ export function App() {
             }}
             widgetStorage={store.widgetStorage}
             widgetDataVersion={store.widgetDataVersion}
-            onChooseSearchEngine={() => openSettings('search')}
             onEditShortcut={setEditingShortcut}
             onDuplicateShortcut={duplicateShortcut}
             onRemoveShortcut={setRemovingShortcut}

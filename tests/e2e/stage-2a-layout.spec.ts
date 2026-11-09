@@ -119,7 +119,7 @@ test('clears stale layout history after a shortcut add/remove operation', async 
     await clickButton(page, '添加到主屏幕');
     await waitForSaved(page);
     await expect(page.getByRole('button', { name: '撤销布局', exact: true })).toBeDisabled();
-    await clickButton(page, '删除 History guard');
+    await clickButton(page, '移除 History guard');
     await clickButton(page, '删除快捷方式');
     await waitForSaved(page);
     await expect(page.getByRole('button', { name: '撤销布局', exact: true })).toBeDisabled();

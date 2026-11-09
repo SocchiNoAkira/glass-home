@@ -1,19 +1,23 @@
-import { useRef } from 'react';
-import { Copy, Pencil, X } from 'lucide-react';
+import { useRef, useState } from 'react';
 import type { Shortcut } from '@/src/domain/workspace/model';
 import { fallbackIcon } from '@/src/domain/shortcuts/shortcut';
 import { openSafeUrl } from '@/src/domain/search/search';
 import { exceedsClickDragThreshold } from '@/src/domain/interaction/pointerIntent';
+import { EditBadges } from '@/src/features/grid/EditBadges';
+import { EditMenu } from '@/src/features/grid/EditMenu';
 
-export function ShortcutIcon({ shortcut, editMode, onEdit, onDuplicate, onRemove }: {
+export function ShortcutIcon({ shortcut, editMode, locked = false, onEdit, onDuplicate, onRemove, onToggleLock }: {
   readonly shortcut: Shortcut;
   readonly editMode: boolean;
+  readonly locked?: boolean;
   readonly onEdit: (shortcut: Shortcut) => void;
   readonly onDuplicate: (shortcut: Shortcut) => void;
   readonly onRemove: (shortcut: Shortcut) => void;
+  readonly onToggleLock?: () => void;
 }) {
   const pointerStart = useRef<{ id: number; x: number; y: number } | undefined>(undefined);
   const dragged = useRef(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <div className={`shortcut ${editMode ? 'shortcut--editing' : ''}`} data-shortcut-id={shortcut.id}>
@@ -47,11 +51,28 @@ export function ShortcutIcon({ shortcut, editMode, onEdit, onDuplicate, onRemove
         </span>
         <span className="shortcut__label">{shortcut.title}</span>
       </a>
-      {editMode && <div className="shortcut__actions">
-        <button className="shortcut__delete" onClick={() => onRemove(shortcut)} aria-label={`删除 ${shortcut.title}`} title="删除"><X size={12} /></button>
-        <button className="shortcut__edit" onClick={() => onEdit(shortcut)} aria-label={`编辑 ${shortcut.title}`} title="编辑"><Pencil size={12} /></button>
-        <button className="shortcut__duplicate" onClick={() => onDuplicate(shortcut)} aria-label={`复制 ${shortcut.title}`} title="复制"><Copy size={12} /></button>
-      </div>}
+      {/*
+        iOS-style corner badges: X removes, "..." holds the rest. Shortcuts are
+        removable, so both appear. Duplicate lives in the menu rather than as a
+        third corner button — moving it keeps the feature, the crowding is what
+        goes away.
+      */}
+      {editMode && <EditBadges
+        label={shortcut.title}
+        removable
+        onRemove={() => onRemove(shortcut)}
+        onMenu={() => setMenuOpen((open) => !open)}
+        menuLabel="更多操作"
+      />}
+      {editMode && menuOpen && <EditMenu
+        label={shortcut.title}
+        onClose={() => setMenuOpen(false)}
+        actions={[
+          { label: '编辑', icon: 'edit', onSelect: () => onEdit(shortcut) },
+          { label: '复制', icon: 'duplicate', onSelect: () => onDuplicate(shortcut) },
+          ...(onToggleLock ? [{ label: locked ? '解锁位置' : '锁定位置', icon: locked ? 'unlock' as const : 'lock' as const, onSelect: onToggleLock }] : []),
+        ]}
+      />}
     </div>
   );
 }
