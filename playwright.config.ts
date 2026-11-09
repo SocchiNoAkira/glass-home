@@ -6,7 +6,9 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: 'stage-[123]*.spec.ts',
+  // Stage 4 adds the data-management cases; the pattern must include them or a
+  // plain `playwright test` run would silently skip the newest acceptance work.
+  testMatch: 'stage-[1-4]*.spec.ts',
   fullyParallel: false,
   workers: 1,
   timeout: 45_000,

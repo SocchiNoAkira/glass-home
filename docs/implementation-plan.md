@@ -1,7 +1,7 @@
 # Glass Home 开发实施方案 v1
 
-> 状态：阶段 0、1、2A 已验收；阶段 2B-1、2B-2、3 已实现并通过自测，待用户确认；阶段 4 未开始。
-> 当前测试基线：189 项单元/属性测试（另 2 项显式跳过）、37 个真实 Edge 用例 ×2 轮 = 74 次全通过。
+> 状态：阶段 0、1、2A 已验收；阶段 2B-1、2B-2、3、4 已实现并通过自测，**待用户确认**。阶段 4 的 Chrome 真机项因本机未安装 Chrome 而未执行。
+> 当前测试基线：200 项单元/属性测试（另 2 项显式跳过）、41 个真实 Edge 用例 ×2 轮 = 82 次全通过。
 >
 > 本地项目：`/Volumes/Cupcake/Workspace/glass-home`。用户已于 2026-11-06 确认开始本地开发，并要求将项目迁移至 `/Volumes/Cupcake/Workspace`。
 >
@@ -159,11 +159,15 @@ New Tab UI / Settings / Gallery
 
 **与早期计划的偏差（如实记录）**：早期计划写"示例 Widget 仅开发模式可挂载，生产构建不暴露入口"。实际实现是 `widget-probe.html` **已打包进生产包**并声明在 `manifest.sandbox.pages`，仅在设置「数据」页以 `allow-scripts` 内嵌展示；它没有 `web_accessible_resources`，外部页面无法直接访问。若要严格"生产不暴露"，需在构建时剔除该入口——**本轮未做**，属待决项。
 
-### 阶段 4：首发加固（未开始）
+### 阶段 4：首发加固（已实现，待确认；Chrome 真机未执行）
 
-- P0 功能、迁移、备份恢复、安全、无障碍、性能完整回归。
-- Chrome/Edge 实测并记录环境；Firefox/Safari 不在未实测时宣称支持。
-- 权限与隐私说明、已知问题、可重复构建的发布包。
+- [x] P0 功能、迁移、备份恢复、安全、无障碍、性能回归：`pnpm run check` 通过，E2E 41 用例 ×2 轮全通过。
+- [x] 备份纳入组件数据（基线 14.3）、清除单组件 / 清除全部数据入口（基线 12.4）。
+- [x] 权限与隐私说明（`docs/privacy-and-permissions.md`）、可重复构建发布包（SHA-256 三次一致）。
+- [x] Edge 157.0.4341.42 真机实测并记录环境。
+- [ ] **Chrome 真机实测：本机未安装 Chrome，未执行**（基线 14.6 要求 Chrome + Edge，当前仅满足 Edge）。
+- [ ] Firefox / Safari 未实测，不宣称支持；仅列入兼容清单。
+- [ ] 60fps 与四档材质对比度的实测记录仍不完整。
 
 ## 数据与接口不变量
 
@@ -380,6 +384,97 @@ pnpm exec playwright test --repeat-each=2  # 74 passed (3.6m)
 
 ---
 
+#### 验证记录 · 阶段 4（2026-11-09，待用户确认）
+
+**环境**：macOS / Darwin arm64，Node.js 24.19.0，pnpm 11.21.0，Microsoft Edge **157.0.4341.42**（Playwright `channel: 'msedge'`，1440×1000，加载生产扩展，独立临时 profile）。
+**本机不存在 Google Chrome**（`/Applications` 仅有 Microsoft Edge.app 与 Safari.app，`google-chrome` 亦不在 PATH），故 Chrome 真机项**未执行**，见下文「真机矩阵」。
+
+**命令与结果**
+
+```bash
+pnpm run check                             # tsc 0 错 / 200 passed | 2 skipped / 构建 511.18kB
+pnpm exec playwright test --repeat-each=2  # 82 passed (3.8m)
+pnpm run zip                               # glass-home-0.1.0-chrome.zip  165.81kB
+```
+
+41 个用例 × 2 轮 = **82 次全通过**，0 失败 0 flaky。阶段 0/1/2A/2B/3 既有用例全部保持通过。
+
+**构建可重复性**（连续三次「构建 + 打包」）：
+
+```text
+b3a4e4c7bd28ed9e09095386c8d27b78e3b45a891c3cc9ec43808e00200f5b68  glass-home-0.1.0-chrome.zip
+b3a4e4c7bd28ed9e09095386c8d27b78e3b45a891c3cc9ec43808e00200f5b68  (第 2 次)
+b3a4e4c7bd28ed9e09095386c8d27b78e3b45a891c3cc9ec43808e00200f5b68  (第 3 次)
+```
+
+三次 SHA-256 完全一致，产物含 11 个文件、511176 字节。
+
+**交付**
+
+- **4A 备份纳入组件数据**（基线 14.3）：`WorkspaceBackup` 新增可选 `widgetData`；`exportBackup` 按 `workspace.widgets[].storageNamespace` 收集记录；`replace()` 把 `workspaces` + `assets` + `widget-data` 放进**同一事务**；校验器拒绝未声明命名空间、重复键、带命名空间前缀的键、非 JSON 载荷与超配额总和。
+- **4B 两个清除入口**（基线 12.4）：设置「数据」页新增组件数据列表（逐实例显示真实占用与「清除」）与「清除全部数据」；两者均走 `ConfirmDialog` 二次确认。`WorkspaceRepository.clear()` 从"只清 `workspaces`"扩到三个仓库一次性清空。
+- **4C 交付文档**：`docs/privacy-and-permissions.md`（权限与隐私说明）、本文档的已知问题与未完成清单、可重复构建的发布包。
+
+**关键决策**
+
+1. **`widgetData` 的 `undefined` 与 `[]` 必须区分**。`undefined` = 备份早于该字段（旧文件），导入时**保留**现存组件数据；`[]` = 备份确实没有数据，导入时**清空**。最初的 `validateBackup` 会把缺省补成 `[]`，导致导入旧备份静默删掉用户的待办——这是本轮发现并修掉的真实数据丢失缺陷。
+2. **组件数据以 JSON 字符串原样往返**，不解析再序列化：存储里保存的就是这段文本，转一手会改变字节数，使配额判定与实际写入不一致。
+3. **`WidgetStorage` 的操作串行化**。组件写入是 fire-and-forget（勾选不能阻塞 UI），于是"刚写完就导出"会读到旧数据、"刚写完就清除"会被迟到写入复活。加入内部队列后，导出与清除都排在已发起写入之后。
+4. **沙箱 CSP 需 `'unsafe-inline'`**，与阶段 3 的收紧方向相反但原因充分：`sandbox.pages` 页面运行在 unique origin 下，`'self'` 不匹配任何资源，打包脚本被**静默阻止**（标签在、文件在、永不执行）。放宽仅限该已完全隔离的页面，`extension_pages` 未改动。
+
+**本轮发现并修复的五个真实缺陷**
+
+1. **备份完全不含组件数据**：`exportBackup` 只收集 `wallpaperAssetId` 与 `shortcut.iconAssetId`，恢复备份会丢掉全部待办。违反基线 14.3。
+2. **`clear()` 只清 `workspaces`**：自定义图片与组件数据留在库中，"清除全部数据"名不副实，隐私声明不成立。违反基线 12.4。
+3. **组件写入无串行化**：见上「关键决策」3。E2E 中复现为「写入后立即读库读到 0 条」。
+4. **沙箱页脚本被 CSP 静默阻止**（既有缺陷，非本阶段引入）：`script-src 'self'` 在 unique origin 下匹配不到任何资源。定位过程见下「诊断方法」。
+5. **沙箱握手存在两处竞态**（既有缺陷）：宿主在 iframe 已开始加载后才挂监听器；沙箱侧用 `requestAnimationFrame` 延迟发包，而实测该帧回调在沙箱 iframe 内**不触发**。改为「先挂监听器再赋 `src`」+「沙箱周期重试直至收到响应」。
+
+**诊断方法（记录过程，避免下次重复猜错）**
+
+沙箱白屏/超时一类问题，先取证据再改代码。本轮先后提出并**逐一证伪**了三个错误假设（CSP 拦外链 chunk、`crossorigin` 导致 CORS 失败、模块未执行），最终由以下三条一次性定位：
+
+- 在沙箱内注入 classic 与 module 内联脚本，观察是否执行 → 证明 `'unsafe-inline'` 缺失是**唯一**的阻塞点；
+- 在宿主 `window` 上记录所有 `message`，并按 `event.source === window` 区分来源 → 证明握手**已经成功**（收到 `sandbox.ready` 与 `environment.get`），推翻"模块没跑"的结论；
+- 在沙箱内直接 `requestAnimationFrame` 探针 → 证明该回调在沙箱 iframe 内不触发（1s 内未执行），定位到发包时机。
+
+教训：`toBeVisible`/`toHaveAttribute` 超时只说"没看到结果"，不能说明原因；而截图全白可能是测试截图时机（原生 `dialog` 打开时页面其余部分 inert），不能当作"应用崩溃"。
+
+**自己写错的测试及纠正**（共 4 处，均为测试缺陷，非产品缺陷）
+
+1. `readStoreCounts` 用仓库名 `'widget-data'` 取值却按 `widgetData` 键读取，得到 `undefined`；改为显式映射两个词表。
+2. 设置面板保存后未等 `dialog` 关闭就输入待办，而原生 modal 使页面 inert，输入落到对话框上；改为等 `getByRole('dialog')` 计数归零。
+3. 清除后 `waitForLoadState('load')` 对已加载页面立即返回，随后读库早于 `location.reload()` 生效；改为轮询最终状态 `waitForClearedState`。
+4. `openDataTab` 未先确认无残留对话框，被前一个 modal 吞掉点击。
+
+**真机矩阵**
+
+| 浏览器 | 版本 | 结果 | 说明 |
+|---|---|---|---|
+| Microsoft Edge | 157.0.4341.42 | ✅ 82/82（41 用例 ×2 轮） | 本机实测，加载生产扩展 |
+| Google Chrome | — | ⬜ **未测** | 本机未安装，未以外推替代 |
+| Firefox | — | ⬜ 未测 | MV3 与 `sandbox.pages` 行为差异未验证 |
+| Safari | — | ⬜ 未测 | 本机有 Safari，但无法以 Playwright 加载 MV3 扩展做等价验证 |
+
+> 基线 14.6 要求「至少 Chrome + Edge 真机」。当前满足 Edge、**不满足 Chrome**，故阶段 4 的跨浏览器验收**未达成**。不以 Edge 通过推断 Chrome 通过。
+
+**验证的具体内容**（`tests/e2e/stage-4-data.spec.ts`，4 个用例，均两次通过）
+
+1. 导出备份含 `widgetData`（`namespace: 'builtin.todo'`, `key: 'state'`）→ 清除全部 → 导入后待办内容恢复；
+2. 清除单组件：待办清空、组件仍在原位、快捷方式数量不变、**Workspace revision 不变**（清除组件数据不是布局操作）、刷新后仍为空；
+3. 旧格式备份（删除 `widgetData` 字段）导入后**保留**现存待办；
+4. 清除全部数据同时清空 `assets` 与 `widget-data`，重载后重建默认工作区（1 条 workspace）、自定义壁纸消失。
+
+**未覆盖范围（本阶段未验证）**
+
+- Chrome 真机、Windows、Firefox、Safari 适配与降级；
+- 60fps / 长任务实测，四档材质在各断点的对比度实测（基线 14.5 中的"记录设备/浏览器/窗口/对象数量/质量等级"仅部分具备：Edge 157、1440×1000、默认 20 快捷方式 + 4 组件、`balanced` 材质）；
+- 完整屏幕阅读器流程；`segmented` 键盘走查仅覆盖布局重排；
+- 备份跨设备迁移（不同浏览器配置文件之间）；
+- 生产包剔除 `widget-probe.html`（仍为未完成项，见下第 8 条）。
+
+---
+
 ## 跨阶段未完成清单（汇总）
 
 以下项目在所有已实现阶段中**均未完成**，不作为任何阶段的完成项：
@@ -388,10 +483,12 @@ pnpm exec playwright test --repeat-each=2  # 74 passed (3.6m)
 2. **"保持分组"整理模式未做**：默认布局无 `groupId`，实现后恒为空操作。
 3. **多页面 `expectedRevision` 冲突**：当前为单页面主屏幕，无第二页面。
 4. **性能**：60fps 目标、持续拖动与长任务检测未测量；只有零散的诊断样本，不构成承诺。
-5. **无障碍**：完整屏幕阅读器流程、全部壁纸组合的 WCAG 对比度未验收。
-6. **跨浏览器**：Chrome、Windows、Firefox、Safari 未实测，把 Edge 通过扩展成跨浏览器承诺不成立。
+5. **无障碍**：完整屏幕阅读器流程、全部壁纸组合的 WCAG 对比度未验收（基线 8.6 / 14.5）。阶段 4 仅在数据管理新增了 `forced-colors` 回退与键盘可达入口。
+6. **跨浏览器**：Chrome 未安装（本机无 Chrome，阶段 4 未测）、Windows/Firefox/Safari 未实测；基线 14.6 的「Chrome + Edge」要求尚未满足。
 7. **撤销历史**：仅存当前页面内存，不跨刷新；普通快捷方式 CRUD 不是布局历史事务。
 8. **沙箱示例页仍在生产包内**：`widget-probe.html` 由 manifest 声明为 sandbox 页并在生产构建中输出；它无 `web_accessible_resources`，仅内嵌使用。若要严格做到"生产不暴露开发示例"，需在构建时剔除该入口——**未做**。
+9. **备份跨设备迁移未验证**：备份文件可在不同浏览器配置文件间导入的设计成立（纯本地 JSON），但只实测了同一 profile 内往返。
+10. **组件数据备份依赖存储已打开**：导出前若 `WidgetStorage` 尚未 open，会以「组件存储尚未就绪」明确失败而不是静默导出空数据；该失败路径未做 E2E 覆盖。
 
 ## 文档职责划分
 
@@ -400,3 +497,4 @@ pnpm exec playwright test --repeat-each=2  # 74 passed (3.6m)
 - `docs/adr/0001-stage-0-foundation.md`：阶段 0 技术决策。
 - `docs/grid-state-machine.md`：网格状态机草案。
 - `docs/compatibility-matrix.md`：仅记录实际测试过的浏览器组合。
+- `docs/privacy-and-permissions.md`：面向使用者的权限与隐私说明（阶段 4 交付，随版本更新）。
