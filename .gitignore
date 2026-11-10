@@ -4,6 +4,7 @@ node_modules/
 artifacts/
 playwright-report/
 test-results/
+audit/
 *.log
 .DS_Store
 .env

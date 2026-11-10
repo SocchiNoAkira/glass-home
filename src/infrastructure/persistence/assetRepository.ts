@@ -43,6 +43,20 @@ export class AssetRepository {
     await transactionComplete(transaction);
   }
 
+  /**
+   * Ids currently stored.
+   *
+   * Needed for orphan pruning: knowing which assets to delete requires knowing
+   * what exists, and the reference set alone cannot reveal leftovers from
+   * before a change. Uses `getAllKeys` so no blobs are materialised.
+   */
+  async listIds(): Promise<string[]> {
+    const database = await this.open();
+    const { store } = assetStore(database, 'readonly');
+    const keys = await requestResult(store.getAllKeys()) as IDBValidKey[];
+    return keys.map((key) => String(key));
+  }
+
   async clear(): Promise<void> {
     const database = await this.open();
     const { transaction, store } = assetStore(database, 'readwrite');

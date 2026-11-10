@@ -37,9 +37,21 @@ export function EditMenu({ label, actions, onClose }: {
 
   // Dismiss on outside click and on Escape. A menu that can only be closed by
   // clicking a specific spot is a trap when it overlaps the grid.
+  //
+  // The pointerdown listener runs in the *capture* phase, so it fires before
+  // the trigger button's own click handler. That ordering caused a real bug:
+  // pressing "..." while the menu was open closed it here, and then the button's
+  // `setOpen(v => !v)` flipped `open` back to true, so the menu could never be
+  // dismissed by its own trigger. The trigger button is therefore excluded —
+  // both places that toggle the menu own their own open state.
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (ref.current?.contains(target)) return;
+      // A badge owns the toggle; let its click handler decide the next state.
+      if ((target as Element).closest?.('.edit-badge') != null) return;
+      onClose();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;

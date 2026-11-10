@@ -18,9 +18,18 @@ export class OccupancyGrid {
     return grid;
   }
 
+  /**
+ * A copy of this grid.
+ *
+ * The array must be *replaced*, not appended to: the constructor already
+ * allocated `rows * columns` slots, so `push`ing the source cells doubled the
+ * length and left the real occupancy in the second half — `at(x, y)` indexes the
+ * first half and reads `undefined` for every cell. Assigning in place keeps the
+ * length and the index arithmetic intact.
+ */
   clone(): OccupancyGrid {
     const grid = new OccupancyGrid(this.columns, this.rows);
-    grid.cells.push(...this.cells);
+    grid.cells.splice(0, grid.cells.length, ...this.cells);
     return grid;
   }
 

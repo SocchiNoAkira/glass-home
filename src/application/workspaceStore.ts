@@ -126,6 +126,37 @@ export function useWorkspace() {
   const enqueueCommitRef = useRef(enqueueCommit);
   enqueueCommitRef.current = enqueueCommit;
 
+  /**
+   * Deletes asset blobs the committed workspace no longer references.
+   *
+   * Every wallpaper change and icon edit left the previous blob in the `assets`
+   * store forever: nothing ever deleted from it, so the database grew without
+   * bound (up to 4MB per abandoned wallpaper). Orphans are invisible to backup
+   * (export only collects referenced ids), so they were pure storage waste.
+   *
+   * Runs *after* the commit succeeds and scans the full reference set each time
+   * rather than guessing which id became stale: two shortcuts may legitimately
+   * share one asset (duplicating a shortcut copies the field), so
+   * "the old id is unused" is only knowable by looking at the whole workspace.
+   */
+  const pruneAssets = useCallback(async (committed: Workspace): Promise<void> => {
+    const assets = assetsRef.current;
+    if (!assets) return;
+    const referenced = new Set<string>();
+    if (committed.settings.wallpaperAssetId) referenced.add(committed.settings.wallpaperAssetId);
+    for (const shortcut of committed.shortcuts) {
+      if (shortcut.iconAssetId) referenced.add(shortcut.iconAssetId);
+    }
+    try {
+      const stored = await assets.listIds();
+      for (const id of stored) {
+        if (!referenced.has(id)) await assets.remove(id);
+      }
+    } catch {
+      // Pruning is housekeeping: a failure must never fail the user's save.
+    }
+  }, []);
+
   const commitNow = useCallback(async (candidate: Workspace, successMessage?: string, resetHistory = false): Promise<void> => {
     const previous = workspaceRef.current;
     updateWorkspace(candidate);
@@ -143,6 +174,9 @@ export function useWorkspace() {
       }
       setSaveState('saved');
       if (successMessage) setNotice(successMessage);
+      // Housekeeping after a successful commit: drops blobs the new workspace
+      // no longer references (old wallpapers, replaced icons).
+      void pruneAssets(candidate);
     } catch (error) {
       if (!mountedRef.current || operation !== operationRef.current) return;
       updateWorkspace(previous);
@@ -211,6 +245,7 @@ export function useWorkspace() {
   }, []);
 
   const clearError = useCallback(() => setSaveError(undefined), []);
+
 
   /**
    * Drops one instance's stored rows (baseline 12.4 "清除单 Widget 数据").

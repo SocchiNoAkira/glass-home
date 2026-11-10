@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Eraser, ImagePlus, RotateCcw, ShieldAlert, Trash2, Upload } from 'lucide-react';
 import { Modal } from '@/src/components/Modal';
 import { ConfirmDialog } from '@/src/components/ConfirmDialog';
@@ -61,9 +61,23 @@ export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUr
   const [notice, setNotice] = useState<string>();
   const [pendingClear, setPendingClear] = useState<WidgetDataEntry | 'all'>();
   const [clearing, setClearing] = useState(false);
+  const [discardConfirm, setDiscardConfirm] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const wallpaperRef = useRef<HTMLInputElement>(null);
   const update = <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]) => setDraft((current) => ({ ...current, [key]: value }));
+
+  /**
+   * Whether the draft differs from what is actually persisted.
+   *
+   * The 数据 tab used to offer only "完成", which closed the panel outright.
+   * A user who adjusted 主题 on the 外观 tab, then moved to 数据 to check usage
+   * and pressed 完成, lost those edits with no warning. Unsaved changes are now
+   * detected so the close path can ask instead of silently discarding.
+   */
+  const dirty = useMemo(
+    () => (Object.keys(settings) as (keyof WorkspaceSettings)[]).some((key) => draft[key] !== settings[key]) || pendingAsset !== undefined,
+    [draft, settings, pendingAsset],
+  );
 
   // Opening straight onto the data tab must measure too, not only switching
   // into it later. Done in an effect rather than during render: calling back
@@ -190,8 +204,25 @@ export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUr
     </div>
     {error && <p className="form-error" role="alert">{error}</p>}
     {notice && <p className="form-notice" role="status" data-testid="settings-notice">{notice}</p>}
-    {tab !== 'data' ? <div className="modal__actions"><span className="save-hint">设置将保存在此浏览器中</span><button type="button" className="button button--secondary" onClick={onClose}>取消</button><button type="button" className="button button--primary" onClick={() => void save()} disabled={busy}>保存设置</button></div> : <div className="modal__actions"><span className="save-hint"><Trash2 size={13} />清理入口只影响 Glass Home 数据</span><button type="button" className="button button--secondary" onClick={onClose}>完成</button></div>}
+    {/*
+      The 数据 tab keeps a "完成" close, but it no longer discards silently:
+      with pending edits it routes through a confirm first, and offers saving
+      directly so a user who changed 外观 and wandered here does not have to
+      navigate back to save.
+    */}
+    {tab !== 'data' ? <div className="modal__actions"><span className="save-hint">设置将保存在此浏览器中</span><button type="button" className="button button--secondary" onClick={onClose}>取消</button><button type="button" className="button button--primary" onClick={() => void save()} disabled={busy}>保存设置</button></div> : <div className="modal__actions">
+      <span className="save-hint"><Trash2 size={13} />清理入口只影响 Glass Home 数据</span>
+      {dirty ? <><button type="button" className="button button--secondary" disabled={busy} onClick={() => setDiscardConfirm(true)}>放弃修改</button><button type="button" className="button button--primary" disabled={busy} onClick={() => void save()}>保存设置</button></> : <button type="button" className="button button--secondary" onClick={onClose}>完成</button>}
+    </div>}
 
+    {discardConfirm && <ConfirmDialog
+      title="放弃未保存的修改？"
+      description="你在其它分页做过的设置改动还没有保存，关闭面板会丢弃它们。"
+      confirmLabel="放弃修改"
+      dangerous
+      onClose={() => setDiscardConfirm(false)}
+      onConfirm={() => { setDiscardConfirm(false); onClose(); }}
+    />}
     {pendingClear === 'all' && <ConfirmDialog
       title="清除全部本地数据？"
       description="将删除工作区、自定义图片和全部组件数据，并重建空白主屏幕。此操作不可撤销。"

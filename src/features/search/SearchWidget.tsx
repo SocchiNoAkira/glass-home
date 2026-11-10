@@ -16,8 +16,17 @@ export function SearchWidget({ settings }: {
       setMessage(destination.message);
       return;
     }
+    /*
+      `openSafeUrl` returns false when the URL is refused at the last gate.
+      Ignoring that return value made a failed navigation look identical to a
+      successful one: nothing happened and nothing was said. Reporting it turns
+      a silent dead end into a visible one.
+    */
+    if (!openSafeUrl(destination.url, settings.openTarget)) {
+      setMessage('网址不安全或格式不完整。');
+      return;
+    }
     setMessage('');
-    openSafeUrl(destination.url, settings.openTarget);
   };
 
   return (

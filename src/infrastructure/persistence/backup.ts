@@ -47,7 +47,19 @@ export async function exportBackup(
   assetRepository: AssetRepository,
   widgetStorage: WidgetStorage,
 ): Promise<WorkspaceBackup> {
-  const assetIds = [workspace.settings.wallpaperAssetId, ...workspace.shortcuts.map((item) => item.iconAssetId)].filter((id): id is string => Boolean(id));
+  /**
+   * Assets are collected by *id*, de-duplicated.
+   *
+   * Two shortcuts may legitimately share one `iconAssetId` (duplicating a
+   * shortcut copies the field verbatim). Exporting that reference twice produced
+   * a backup with two rows of the same id, which the validator then rejected as
+   * "资源 ID 不能重复" — so the app could export a file it could never import.
+   * Deduplicating at the source makes every export satisfy the import rule.
+   */
+  const assetIds = [...new Set([
+    workspace.settings.wallpaperAssetId,
+    ...workspace.shortcuts.map((item) => item.iconAssetId),
+  ].filter((id): id is string => Boolean(id)))];
   const assets = [];
   for (const id of assetIds) {
     const asset: WorkspaceAsset | undefined = await assetRepository.get(id);

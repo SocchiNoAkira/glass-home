@@ -11,7 +11,7 @@ import { addShortcut, removeShortcut, updateSettings, updateShortcut } from '@/s
 import { createDefaultWorkspace } from '@/src/domain/workspace/defaults';
 import { decodeBackupAssets, backupWidgetRecords, downloadBackup, exportBackup, readBackupFile } from '@/src/infrastructure/persistence/backup';
 import { validateWorkspace } from '@/src/domain/workspace/schema';
-import type { Shortcut, WorkspaceAsset, WorkspaceSettings } from '@/src/domain/workspace/model';
+import type { Shortcut, Workspace, WorkspaceAsset, WorkspaceSettings } from '@/src/domain/workspace/model';
 
 export function App() {
   const store = useWorkspace();
@@ -150,21 +150,48 @@ export function App() {
   const themeDark = workspace.settings.theme === 'system' ? systemDark : workspace.settings.theme === 'dark';
   const wallpaperStyle = store.wallpaperUrl ? { backgroundImage: `url(${JSON.stringify(store.wallpaperUrl).slice(1, -1)})` } : undefined;
 
+  /**
+   * Runs a domain command that may throw *synchronously*, then commits it.
+   *
+   * `addShortcut` throws while building the candidate (grid full, no legal
+   * placement). That throw happens during argument evaluation of
+   * `store.commit(addShortcut(...))` — before `commit` is ever called — so the
+   * trailing `.catch(() => undefined)` never sees it. The result was an
+   * uncaught error in the event handler and a click that did nothing at all,
+   * with no toast and no explanation.
+   *
+   * Wrapping the *call* (not just the promise) is what makes the failure
+   * visible: the user gets the command's own reason instead of silence.
+   */
+  const runCommand = (build: () => Workspace, successMessage: string) => {
+    let next: Workspace;
+    try {
+      next = build();
+    } catch (error) {
+      store.reportError(error instanceof Error ? error.message : '操作未完成，请重试。');
+      return;
+    }
+    void store.commit(next, successMessage).catch(() => undefined);
+  };
+
   const saveShortcut = (draft: ShortcutDraft, shortcut?: Shortcut) => {
     const now = new Date().toISOString();
     if (shortcut) {
-      void store.commit(updateShortcut(workspace, { ...shortcut, ...draft, updatedAt: now }), '快捷方式已更新。').catch(() => undefined);
+      runCommand(() => updateShortcut(workspace, { ...shortcut, ...draft, updatedAt: now }), '快捷方式已更新。');
       setEditingShortcut(undefined);
       return;
     }
     const id = crypto.randomUUID();
-    void store.commit(addShortcut(workspace, { ...draft, id, createdAt: now, updatedAt: now }), '已添加到所有断点的空位。').catch(() => undefined);
+    runCommand(() => addShortcut(workspace, { ...draft, id, createdAt: now, updatedAt: now }), '已添加到所有断点的空位。');
     setEditingShortcut(undefined);
   };
 
   const duplicateShortcut = (shortcut: Shortcut) => {
     const now = new Date().toISOString();
-    void store.commit(addShortcut(workspace, { ...shortcut, id: crypto.randomUUID(), title: `${shortcut.title} 副本`.slice(0, 40), createdAt: now, updatedAt: now }), '已复制快捷方式。').catch(() => undefined);
+    runCommand(
+      () => addShortcut(workspace, { ...shortcut, id: crypto.randomUUID(), title: `${shortcut.title} 副本`.slice(0, 40), createdAt: now, updatedAt: now }),
+      '已复制快捷方式。',
+    );
   };
 
   const saveSettings = async (settings: WorkspaceSettings, asset?: WorkspaceAsset) => {
@@ -270,7 +297,7 @@ export function App() {
       onImport={importWorkspace} onReset={() => setResetConfirm(true)}
       onRequestWidgetData={() => void refreshWidgetSizes()}
       onClearWidgetData={clearWidgetData} onClearAllData={clearAllData} />}
-    {removingShortcut && <ConfirmDialog title={`删除「${removingShortcut.title}」？`} description="将从所有断点移除此快捷方式。不会删除任何浏览记录或网站数据。" confirmLabel="删除快捷方式" dangerous onClose={() => setRemovingShortcut(undefined)} onConfirm={() => { void store.commit(removeShortcut(workspace, removingShortcut.id), '快捷方式已删除。').catch(() => undefined); setRemovingShortcut(undefined); }} />}
+    {removingShortcut && <ConfirmDialog title={`删除「${removingShortcut.title}」？`} description="将从所有断点移除此快捷方式。不会删除任何浏览记录或网站数据。" confirmLabel="删除快捷方式" dangerous onClose={() => setRemovingShortcut(undefined)} onConfirm={() => { runCommand(() => removeShortcut(workspace, removingShortcut.id), '快捷方式已删除。'); setRemovingShortcut(undefined); }} />}
     {resetConfirm && <ConfirmDialog title="恢复默认主屏幕？" description="此操作会替换你的设置、布局、快捷方式和本地壁纸。建议先导出备份。" confirmLabel="恢复默认" dangerous onClose={() => setResetConfirm(false)} onConfirm={() => { setResetConfirm(false); void store.reset(createDefaultWorkspace()).catch((error: unknown) => store.reportError(error instanceof Error ? `恢复失败：${error.message}` : '恢复失败，请重试。')); }} />}
   </div>;
 }
