@@ -29,6 +29,22 @@ export interface WidgetHostProps {
 export function WidgetHost({ item, workspace, environment, storage, widgetDataVersion, onWidgetError }: WidgetHostProps) {
   const instance = workspace.widgets.find((widget) => widget.instanceId === item.instanceId);
 
+  /*
+    `enabled: false` is checked *before* dispatching to an implementation.
+
+    It used to be checked only after every built-in branch had already returned,
+    which made it unreachable for the built-ins: the schema forbids unknown
+    widget ids, so the trailing branch could never be reached. A backup carrying
+    a disabled built-in therefore rendered it as fully working, contradicting the
+    very flag the data model carries. Disabled instances keep their cell (the
+    layout is untouched) but show why instead of pretending to work.
+  */
+  if (instance && !instance.enabled) {
+    return <WidgetFrame instanceId={item.instanceId} environment={environment}>
+      <WidgetErrorCard instanceId={item.instanceId} message="此组件已被禁用。" />
+    </WidgetFrame>;
+  }
+
   if (item.instanceId === 'builtin.clock') {
     return <WidgetFrame instanceId={item.instanceId} environment={environment}>
       <ClockWidget settings={workspace.settings} />
@@ -60,13 +76,6 @@ export function WidgetHost({ item, workspace, environment, storage, widgetDataVe
         dataVersion={widgetDataVersion}
         onError={(message) => onWidgetError(item.instanceId, message)}
       />
-    </WidgetFrame>;
-  }
-
-  // A disabled instance still occupies its cell; explain why instead of leaving a gap.
-  if (instance && !instance.enabled) {
-    return <WidgetFrame instanceId={item.instanceId} environment={environment}>
-      <WidgetErrorCard instanceId={item.instanceId} message="此组件已被禁用。" />
     </WidgetFrame>;
   }
 

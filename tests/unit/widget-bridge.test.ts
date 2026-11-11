@@ -124,6 +124,40 @@ describe('replay protection', () => {
     routerInstance.handle({ source: TRUSTED_SOURCE, data: request() });
     expect(routerInstance.handle({ source: TRUSTED_SOURCE, data: request({ messageId: 'msg-2' }) }).kind).toBe('reply');
   });
+
+  it('does not let a replay consume the rate budget', () => {
+    // Order matters: the replay check runs before `takeBudget`, so flooding
+    // with one id cannot exhaust the window and lock the widget out.
+    let clock = 1000;
+    const routerInstance = router({ now: () => clock, maxRequestsPerWindow: 2, rateWindowMs: 1000 });
+    routerInstance.handle({ source: TRUSTED_SOURCE, data: request({ messageId: 'same' }) });
+    routerInstance.handle({ source: TRUSTED_SOURCE, data: request({ messageId: 'same' }) });
+    routerInstance.handle({ source: TRUSTED_SOURCE, data: request({ messageId: 'same' }) });
+    // One real request was served; a fresh id still fits the budget.
+    expect(routerInstance.handle({ source: TRUSTED_SOURCE, data: request({ messageId: 'fresh' }) }).kind).toBe('reply');
+  });
+
+  it('keeps replay memory bounded instead of growing forever', () => {
+    // The old Set grew by one entry per answered message for the page's lifetime
+    // (~72k/hour at the 20/s budget). Memory must stay capped.
+    let clock = 1000;
+    const routerInstance = router({ now: () => clock, maxRequestsPerWindow: 100, rateWindowMs: 1000 });
+    for (let index = 0; index < 1500; index += 1) {
+      // Advance well past the memory window so entries genuinely age out.
+      clock += 1000;
+      routerInstance.handle({ source: TRUSTED_SOURCE, data: request({ messageId: `m-${index}`, timestamp: clock }) });
+    }
+    expect(routerInstance.replayMemorySize).toBeLessThanOrEqual(500);
+    expect(routerInstance.replayMemorySize).toBeGreaterThan(0);
+  });
+
+  it('still rejects a replay inside the memory window', () => {
+    let clock = 1000;
+    const routerInstance = router({ now: () => clock });
+    routerInstance.handle({ source: TRUSTED_SOURCE, data: request({ messageId: 'keep' }) });
+    clock += 60_000;
+    expect(routerInstance.handle({ source: TRUSTED_SOURCE, data: request({ messageId: 'keep' }) }).kind).toBe('ignored');
+  });
 });
 
 describe('rate limiting', () => {

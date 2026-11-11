@@ -8,14 +8,44 @@ function getTimeZone(settings: WorkspaceSettings): string | undefined {
 export function ClockWidget({ settings }: { readonly settings: WorkspaceSettings }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
+    let timer = 0;
     const tick = () => setNow(new Date());
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') tick();
-    }, settings.showSeconds ? 1000 : 15_000);
-    document.addEventListener('visibilitychange', tick);
+
+    /*
+      Without seconds the display only needs to change once a minute, but a
+      fixed 15s interval means the minute can be up to 15s stale: a minute
+      boundary that falls just after a tick waits for the next one. Aligning
+      each timeout to the next real minute boundary removes the lag entirely
+      without ticking every second.
+
+      With seconds shown the value changes every second, so the offset is 1000ms.
+    */
+    const nextDelay = () => {
+      if (settings.showSeconds) return 1000 - (Date.now() % 1000);
+      // Milliseconds until the start of the next minute, with a 50ms margin so
+      // the callback fires after the boundary rather than just before it.
+      const msIntoMinute = Date.now() % 60_000;
+      return 60_000 - msIntoMinute + 50;
+    };
+
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        if (document.visibilityState === 'visible') tick();
+        schedule();
+      }, nextDelay());
+    };
+    schedule();
+
+    // A sleeping tab misses callbacks; re-sync as soon as it becomes visible.
+    const onVisible = () => {
+      tick();
+      window.clearTimeout(timer);
+      schedule();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', tick);
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [settings.showSeconds]);
 

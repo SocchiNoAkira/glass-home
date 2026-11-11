@@ -22,7 +22,10 @@ test('the sandbox demo completes a real environment handshake', async () => {
     const frame = page.locator('.sandbox-demo__frame');
     await expect(frame).toBeVisible();
     expect(await frame.getAttribute('sandbox')).toBe('allow-scripts');
-    expect(await frame.getAttribute('src')).toBe('widget-probe.html');
+    // `src` is assigned imperatively after the session listener exists, so the
+    // assertion is on the resolved document rather than the attribute at an
+    // arbitrary moment. (The src *attribute* is still set once the effect runs.)
+    await expect.poll(async () => page.frames().some((candidate) => candidate.url().endsWith('/widget-probe.html'))).toBe(true);
 
     // A real round trip: the host asks, the sandbox answers, the reply renders.
     const sandboxFrame = page.frameLocator('.sandbox-demo__frame');

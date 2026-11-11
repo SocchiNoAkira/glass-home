@@ -83,7 +83,14 @@ export function SandboxDemo({ environment }: { readonly environment: Omit<Widget
     <iframe
       ref={frameRef}
       className="sandbox-demo__frame"
-      src={SANDBOX_PAGE}
+      /*
+        Deliberately no `src` attribute here.
+        React would start the load during commit, before the session's message
+        listener is attached (that happens in the effect below) — the sandbox
+        announces itself once, so a load that won that race lost its request. The
+        effect assigns `frame.src` after the session exists. Setting it in both
+        places also navigated twice per mount.
+      */
       title="沙箱组件开发示例"
       // Same policy the extension declares in the manifest; keeping it inline
       // means the page is isolated even if it is loaded outside that context.

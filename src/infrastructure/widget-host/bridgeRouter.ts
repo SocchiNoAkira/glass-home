@@ -49,8 +49,62 @@ interface RateState {
   count: number;
 }
 
+/**
+ * Bounded record of answered message ids.
+ *
+ * Replay protection used to add every id to a Set that was only cleared on
+ * close. Under the 20/s budget that is ~72k entries per hour of continuous
+ * traffic, so a long-lived new-tab page grew without bound.
+ *
+ * Bounding it naively would weaken the defence, so the bound is tied to when
+ * an id is still *useful*: a replay is only worth attempting while the host
+ * would still answer, i.e. within the request timeout. Ids older than
+ * `REPLAY_MEMORY_MS` are dropped. `maxEntries` is a hard backstop for a caller
+ * that raises the rate budget.
+ *
+ * Kept as an ordered list (Map iteration order is insertion order) so eviction
+ * is O(expired) rather than a scan of the whole set.
+ */
+const REPLAY_MEMORY_MS = 10 * 60 * 1000;
+const REPLAY_MAX_ENTRIES = 500;
+
+class ReplayGuard {
+  private readonly answeredAt = new Map<string, number>();
+
+  has(id: string, now: number): boolean {
+    const at = this.answeredAt.get(id);
+    return at !== undefined && now - at < REPLAY_MEMORY_MS;
+  }
+
+  add(id: string, now: number): void {
+    // A duplicate id never reaches here (the caller checks `has` first), so the
+    // timestamp is always fresh; `set` on an existing key would keep its old
+    // position in insertion order, which is what eviction relies on.
+    this.answeredAt.delete(id);
+    this.answeredAt.set(id, now);
+    if (this.answeredAt.size > REPLAY_MAX_ENTRIES) this.evict(now);
+  }
+
+  clear(): void { this.answeredAt.clear(); }
+
+  /** Exposed for tests: how many ids the guard is still holding. */
+  get size(): number { return this.answeredAt.size; }
+
+  /**
+   * Drops ids that can no longer be replayed within the request timeout, plus
+   * the oldest entries when the hard cap is exceeded.
+   */
+  private evict(now: number): void {
+    for (const [id, at] of this.answeredAt) {
+      const expired = now - at >= REPLAY_MEMORY_MS;
+      if (!expired && this.answeredAt.size <= REPLAY_MAX_ENTRIES) break;
+      this.answeredAt.delete(id);
+    }
+  }
+}
+
 export class SandboxBridgeRouter {
-  private readonly seenMessageIds = new Set<string>();
+  private readonly replayGuard = new ReplayGuard();
   private readonly rate: RateState = { windowStartedAt: 0, count: 0 };
   private closed = false;
   private readonly now: () => number;
@@ -66,7 +120,12 @@ export class SandboxBridgeRouter {
   /** Baseline 10.5: a message from an unloaded widget must be refused. */
   close(): void {
     this.closed = true;
-    this.seenMessageIds.clear();
+    this.replayGuard.clear();
+  }
+
+  /** Exposed for tests: bounded replay memory size. */
+  get replayMemorySize(): number {
+    return this.replayGuard.size;
   }
 
   get timeoutMs(): number {
@@ -92,7 +151,7 @@ export class SandboxBridgeRouter {
         message: makeBridgeError(data, data.method, BRIDGE_ERROR_CODES.instanceMismatch, '实例标识与本会话不符。', this.now()),
       };
     }
-    if (this.seenMessageIds.has(data.messageId)) {
+    if (this.replayGuard.has(data.messageId, this.now())) {
       return { kind: 'ignored', reason: '重复的消息标识，已忽略。' };
     }
 
@@ -103,7 +162,7 @@ export class SandboxBridgeRouter {
 
     // Only after the message is authenticated and within budget does it become
     // part of the dedupe set; otherwise a spammer could poison it for free.
-    this.seenMessageIds.add(data.messageId);
+    this.replayGuard.add(data.messageId, this.now());
     return this.dispatch(data);
   }
 

@@ -42,8 +42,19 @@ export function ShortcutIcon({ shortcut, editMode, locked = false, onEdit, onDup
           const shouldSuppress = editMode || dragged.current;
           pointerStart.current = undefined;
           dragged.current = false;
+          // Navigation is always handled below, never by the anchor's default.
           event.preventDefault();
-          if (!shouldSuppress) openSafeUrl(shortcut.url, shortcut.openTarget);
+          if (shouldSuppress) return;
+
+          /*
+            Modifier clicks are a documented browser convention: ⌘/Ctrl+click
+            means "open in a new tab", regardless of how the link is configured.
+            Unconditionally honouring `shortcut.openTarget` swallowed that — a
+            user expecting a background tab got their current page navigated
+            away instead, losing whatever they were doing.
+          */
+          const forceNewTab = event.metaKey || event.ctrlKey;
+          openSafeUrl(shortcut.url, forceNewTab ? 'new' : shortcut.openTarget);
         }}
       >
         <span className="shortcut__icon" style={{ background: shortcut.accentColor }}>
