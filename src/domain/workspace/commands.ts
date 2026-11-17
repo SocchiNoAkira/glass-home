@@ -1,5 +1,6 @@
-import { isValidConstrainedLayout, type GridColumns, type LayoutItem } from '@/src/domain/grid/model';
+import { GRID_BREAKPOINTS, findFirstFit, isValidConstrainedLayout, type GridColumns, type LayoutItem } from '@/src/domain/grid/model';
 import { DEFAULT_SOLVE_BUDGET, solveLayout } from '@/src/domain/grid/solver';
+import { createWidgetInstance, widgetCatalogEntry, type BuiltinWidgetId } from '@/src/domain/widget/catalog';
 import { validateWorkspace } from './schema';
 import type { Shortcut, Workspace, WorkspaceSettings } from './model';
 
@@ -41,6 +42,76 @@ export function removeShortcut(workspace: Workspace, instanceId: string): Worksp
   return commitCandidate(workspace, {
     ...workspace,
     shortcuts: workspace.shortcuts.filter((item) => item.id !== instanceId),
+    layouts: {
+      10: workspace.layouts[10].filter((item) => item.instanceId !== instanceId),
+      8: workspace.layouts[8].filter((item) => item.instanceId !== instanceId),
+      5: workspace.layouts[5].filter((item) => item.instanceId !== instanceId),
+    },
+  });
+}
+
+/**
+ * Puts one built-in widget on the screen.
+ *
+ * Placement is per breakpoint and independent: the three layouts are separate
+ * documents, so the widget gets the first legal free spot in each rather than
+ * trying to mirror one position onto grids of different widths. `findFirstFit`
+ * scans one row past the content, so a full page grows a row instead of failing.
+ *
+ * `installedWidgets` keeps the declaration of the type, not of the instance: a
+ * removed widget stays "installed" (its implementation is in this build), and
+ * the validator only requires that every present instance is declared.
+ */
+export function addWidget(workspace: Workspace, widgetId: BuiltinWidgetId): Workspace {
+  if (workspace.widgets.some((widget) => widget.widgetId === widgetId)) {
+    throw new Error('这个小组件已经在主屏幕上了。');
+  }
+  const entry = widgetCatalogEntry(widgetId);
+  if (!entry) throw new Error('找不到这个小组件的实现。');
+
+  const layouts = {} as Record<GridColumns, readonly LayoutItem[]>;
+  for (const columns of GRID_BREAKPOINTS) {
+    const items = workspace.layouts[columns];
+    const size = entry.footprint[columns];
+    const spot = findFirstFit(items, size, columns);
+    if (!spot) throw new Error(`${columns} 列网格里没有能放下这个小组件的位置。`);
+    layouts[columns] = [...items, {
+      instanceId: widgetId,
+      kind: 'widget',
+      breakpoint: columns,
+      locked: false,
+      order: items.length,
+      x: spot.x,
+      y: spot.y,
+      w: size.w,
+      h: size.h,
+    }];
+  }
+
+  return commitCandidate(workspace, {
+    ...workspace,
+    layouts,
+    widgets: [...workspace.widgets, createWidgetInstance(widgetId)],
+    installedWidgets: workspace.installedWidgets.some((widget) => widget.widgetId === widgetId)
+      ? workspace.installedWidgets
+      : [...workspace.installedWidgets, { widgetId, version: '1.0.0' }],
+  });
+}
+
+/**
+ * Takes one widget off the screen.
+ *
+ * Only the instance and its three layout items go away; the type stays declared
+ * in `installedWidgets` so the gallery can offer it again. Stored widget data is
+ * cleared by the caller (the store owns storage), which is what makes "remove
+ * then re-add" start from an empty list instead of silently resurrecting rows
+ * no visible widget accounts for.
+ */
+export function removeWidget(workspace: Workspace, instanceId: string): Workspace {
+  if (!workspace.widgets.some((widget) => widget.instanceId === instanceId)) return workspace;
+  return commitCandidate(workspace, {
+    ...workspace,
+    widgets: workspace.widgets.filter((widget) => widget.instanceId !== instanceId),
     layouts: {
       10: workspace.layouts[10].filter((item) => item.instanceId !== instanceId),
       8: workspace.layouts[8].filter((item) => item.instanceId !== instanceId),

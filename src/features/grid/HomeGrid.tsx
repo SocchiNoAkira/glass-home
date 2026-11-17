@@ -8,46 +8,31 @@ import { cellStrideX, cellStrideY } from '@/src/domain/interaction/dragGeometry'
 import type { DropIntent } from '@/src/domain/interaction/dragIntent';
 import { dropIntentKindLabel } from '@/src/domain/interaction/dragIntent';
 import type { WidgetEnvironment } from '@/src/domain/widget/environment';
+import { widgetCatalogEntry } from '@/src/domain/widget/catalog';
 import type { WidgetStorage } from '@/src/infrastructure/persistence/widgetStorage';
 import { ShortcutIcon } from '@/src/features/shortcuts/ShortcutIcon';
 import { WidgetHost } from '@/src/features/widget/WidgetHost';
 import { WidgetEditBadge } from './EditBadges';
+import { measureGridMetrics } from './gridMetrics';
+import { gridCellTexture } from './gridTexture';
 import { useGridDrag } from './useGridDrag';
 import { useGridKeyboard } from './useGridKeyboard';
 
-/** Display names for built-in widgets, used in the badge's accessible label. */
-const WIDGET_LABELS: Readonly<Record<string, string>> = {
-  'builtin.clock': '时钟',
-  'builtin.search': '搜索',
-  'builtin.calendar': '日历',
-  'builtin.todo': '待办',
-};
+/** Display name for a widget, from the one catalog the gallery also reads. */
+function widgetLabel(instanceId: string): string {
+  return widgetCatalogEntry(instanceId)?.label ?? instanceId;
+}
 
-/**
- * Cell texture for edit mode, aligned to the real tracks.
- *
- * The old decoration was a fixed 15px dot grid, which matched nothing: rows are
- * 92px while columns are fractional, so it read as a five-column grid you could
- * never actually drop into — the eye had nothing to aim at.
- *
- * Each tile is one *stride* (cell + gutter), so a 1px line lands exactly on
- * every column's left edge. Tiling by cell width instead would drift by one
- * gutter per column, which is the mistake this avoids.
- */
-function gridOverlayStyle(columns: GridColumns, gapX: number, gapY: number, rowHeight: number): React.CSSProperties {
-  const cellW = `calc((100% - ${gapX * (columns - 1)}px) / ${columns})`;
-  const strideX = `calc(${cellW} + ${gapX}px)`;
-  const strideY = `${rowHeight + gapY}px`;
-  return {
-    backgroundImage:
-      // Left edge of every column.
-      'linear-gradient(to right, #ffffff24 1px, transparent 1px),' +
-      // Top edge of every row.
-      'linear-gradient(to bottom, #ffffff24 1px, transparent 1px)',
-    backgroundSize: `${strideX} ${strideY}`,
-    backgroundPosition: '0 0',
-    backgroundRepeat: 'repeat',
-  };
+/** Whether two measurements describe the same rendered tracks. */
+function sameMetrics(a: GridMetrics | undefined, b: GridMetrics | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.columns === b.columns
+    && a.cellWidth === b.cellWidth
+    && a.rowHeight === b.rowHeight
+    && a.gapX === b.gapX
+    && a.gapY === b.gapY
+    && a.padLeft === b.padLeft
+    && a.padTop === b.padTop;
 }
 
 /** Absolute CSS pixel rectangle for one grid rect, derived from the one-off measurement. */
@@ -78,7 +63,7 @@ function DragOverlay({ metrics, origin, intent }: {
   </>;
 }
 
-export function HomeGrid({ workspace, columns, editMode, environment, widgetStorage, widgetDataVersion, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout, onWidgetError }: {
+export function HomeGrid({ workspace, columns, editMode, environment, widgetStorage, widgetDataVersion, onEditShortcut, onDuplicateShortcut, onRemoveShortcut, onPreviewLayout, onCommitLayout, onCancelLayout, onWidgetError, onRemoveWidget }: {
   readonly workspace: Workspace;
   readonly columns: GridColumns;
   readonly editMode: boolean;
@@ -94,6 +79,8 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
   readonly onCommitLayout: () => Promise<void>;
   readonly onCancelLayout: () => void;
   readonly onWidgetError: (instanceId: string, message: string) => void;
+  /** Opens the removal confirmation in `App`; the grid never writes by itself. */
+  readonly onRemoveWidget: (instanceId: string) => void;
 }) {
   const shortcuts = new Map(workspace.shortcuts.map((shortcut) => [shortcut.id, shortcut]));
   const items = readingOrder(workspace.layouts[columns]);
@@ -116,27 +103,30 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
   /**
    * Real track geometry, measured after layout so the texture can align to it.
    *
-   * These values differ per breakpoint (rows are 92px wide, 82px narrow; gaps
-   * change too), so they must be read from the rendered grid rather than
-   * hard-coded. Measured in a layout effect because the ref is null during
-   * render, and re-measured on resize via `columns`.
+   * Row height and both gutters differ per breakpoint (92 / 82 / 76px rows, and
+   * the 420px breakpoint changes rows without changing the column count), so
+   * they must be read from the rendered grid rather than hard-coded. The same
+   * `measureGridMetrics` the hit tester uses feeds the texture, which is what
+   * keeps "the square you see" and "the cell you can drop into" identical.
+   *
+   * Measured unconditionally, not only in edit mode: a drag in normal mode makes
+   * the texture appear mid-interaction, and measuring on drag start would paint
+   * one frame with stale geometry.
    */
-  const [tracks, setTracks] = useState<{ rowHeight: number; gapX: number; gapY: number }>();
+  const [metrics, setMetrics] = useState<GridMetrics>();
   useLayoutEffect(() => {
-    if (!editMode) { setTracks(undefined); return; }
     const grid = drag.gridRef.current;
     if (!grid) return;
-    const style = window.getComputedStyle(grid);
-    const rowHeight = Number.parseFloat(style.gridAutoRows);
-    const gapY = Number.parseFloat(style.rowGap);
-    const gapX = Number.parseFloat(style.columnGap);
-    if (!Number.isFinite(rowHeight) || rowHeight <= 0) return;
-    setTracks({
-      rowHeight,
-      gapX: Number.isFinite(gapX) ? gapX : 0,
-      gapY: Number.isFinite(gapY) ? gapY : 0,
-    });
-  }, [editMode, columns, drag.gridRef]);
+    const measure = () => {
+      const next = measureGridMetrics(grid, columns);
+      setMetrics((previous) => (sameMetrics(previous, next) ? previous : next));
+    };
+    measure();
+    // Breakpoint changes that do not alter the column count (row height, gaps)
+    // still have to be picked up, so the resize event is the trigger.
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [columns, editMode, drag.gridRef]);
 
   const renderItem = (item: LayoutItem) => {
     // Widgets go through the host so error isolation and the environment
@@ -183,14 +173,19 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
 
   const dragging = drag.instanceId;
 
+  /**
+   * The texture is the drop surface, so it is shown exactly when a cell can be
+   * targeted: for the whole edit session, and — in normal mode — only while a
+   * drag is actually in flight (baseline 7.1: the page stays quiet otherwise).
+   */
+  const texture = metrics && (editMode || dragging) ? gridCellTexture(metrics) : undefined;
+
   return (
     <div
       ref={drag.gridRef}
       className={`unified-grid unified-grid--${columns} ${editMode ? 'unified-grid--editing' : ''} ${dragging ? 'unified-grid--dragging' : ''}`}
       data-testid="unified-grid" data-columns={columns}
-      style={editMode && tracks
-        ? { '--grid-columns': columns, ...gridOverlayStyle(columns, tracks.gapX, tracks.gapY, tracks.rowHeight) } as React.CSSProperties
-        : { '--grid-columns': columns } as React.CSSProperties}
+      style={{ '--grid-columns': columns, ...texture } as React.CSSProperties}
       aria-label={`主屏幕统一网格，${columns} 列`}
       data-drag-instance={dragging}
       data-drag-intent={drag.intent?.kind}
@@ -221,7 +216,12 @@ export function HomeGrid({ workspace, columns, editMode, environment, widgetStor
               workspace missing one), so a remove control could only fail.
               Shortcuts carry their own badges inside ShortcutIcon.
             */}
-            {editMode && item.kind === 'widget' && <WidgetEditBadge label={WIDGET_LABELS[item.instanceId] ?? item.instanceId} locked={item.locked} onToggleLock={() => toggleLock(item)} />}
+            {editMode && item.kind === 'widget' && <WidgetEditBadge
+              label={widgetLabel(item.instanceId)}
+              locked={item.locked}
+              onToggleLock={() => toggleLock(item)}
+              onRemove={() => onRemoveWidget(item.instanceId)}
+            />}
           </div>
         );
       })}

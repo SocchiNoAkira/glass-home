@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Shortcut } from '@/src/domain/workspace/model';
 import { fallbackIcon } from '@/src/domain/shortcuts/shortcut';
 import { openSafeUrl } from '@/src/domain/search/search';
 import { exceedsClickDragThreshold } from '@/src/domain/interaction/pointerIntent';
+import { resolveSiteIcon } from '@/src/infrastructure/favicon/siteIcon';
 import { EditBadges } from '@/src/features/grid/EditBadges';
 import { EditMenu } from '@/src/features/grid/EditMenu';
 
@@ -18,6 +19,23 @@ export function ShortcutIcon({ shortcut, editMode, locked = false, onEdit, onDup
   const pointerStart = useRef<{ id: number; x: number; y: number } | undefined>(undefined);
   const dragged = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [siteIcon, setSiteIcon] = useState<string>();
+
+  /*
+    Real site icon when the browser already has one, the letter otherwise.
+
+    Resolution is asynchronous and costs one local lookup per shortcut, so the
+    letters render first and the icon replaces them when it arrives — no empty
+    hole, and no flash of the generic globe (that icon is filtered out before it
+    ever becomes a `src`).
+  */
+  useEffect(() => {
+    let active = true;
+    void resolveSiteIcon(shortcut.url).then((src) => {
+      if (active && src) setSiteIcon(src);
+    });
+    return () => { active = false; };
+  }, [shortcut.url]);
 
   return (
     <div className={`shortcut ${editMode ? 'shortcut--editing' : ''}`} data-shortcut-id={shortcut.id}>
@@ -57,8 +75,21 @@ export function ShortcutIcon({ shortcut, editMode, locked = false, onEdit, onDup
           openSafeUrl(shortcut.url, forceNewTab ? 'new' : shortcut.openTarget);
         }}
       >
-        <span className="shortcut__icon" style={{ background: shortcut.accentColor }}>
-          <span className="shortcut__initials">{shortcut.icon || fallbackIcon(shortcut.title)}</span>
+        <span
+          className={`shortcut__icon ${siteIcon ? 'shortcut__icon--site' : ''}`}
+          style={siteIcon ? undefined : { background: shortcut.accentColor }}
+        >
+          {siteIcon
+            ? <img
+              className="shortcut__favicon"
+              src={siteIcon}
+              alt=""
+              draggable={false}
+              // A stale or blocked icon must fall back to the letter, not a
+              // broken-image glyph.
+              onError={() => setSiteIcon(undefined)}
+            />
+            : <span className="shortcut__initials">{shortcut.icon || fallbackIcon(shortcut.title)}</span>}
         </span>
         <span className="shortcut__label">{shortcut.title}</span>
       </a>

@@ -84,12 +84,29 @@ function placeTodo(items: readonly LayoutItem[], columns: GridColumns): { x: num
   return spot ? { ...spot, ...size } : { x: 0, y: 0, ...size };
 }
 
-export function createDefaultWorkspace(now = new Date().toISOString()): Workspace {
-  const shortcuts = createDefaultShortcuts(now);
+function createWorkspace(shortcuts: readonly Shortcut[], now: string): Workspace {
   return {
     schemaVersion: WORKSPACE_SCHEMA_VERSION, workspaceId: DEFAULT_WORKSPACE_ID,
     revision: 0, createdAt: now, updatedAt: now, settings: DEFAULT_SETTINGS,
     layouts: createDefaultLayouts(shortcuts), shortcuts, widgets: createBuiltinWidgets(),
     installedWidgets: BUILTIN_WIDGET_IDS.map((widgetId) => ({ widgetId, version: '1.0.0' })),
   };
+}
+
+/** The screen a first install ships with: the 20 curated shortcuts. */
+export function createDefaultWorkspace(now = new Date().toISOString()): Workspace {
+  return createWorkspace(createDefaultShortcuts(now), now);
+}
+
+/**
+ * A screen with the widgets but no shortcuts.
+ *
+ * Used when storage has to recreate a workspace after the first install (for
+ * example after "clear all data"): the presets are a one-time starting point,
+ * not something that reappears every time the screen is rebuilt. The widgets
+ * stay because they are the product, not sample content — and they are
+ * removable from the gallery if the user does not want them either.
+ */
+export function createBlankWorkspace(now = new Date().toISOString()): Workspace {
+  return createWorkspace([], now);
 }

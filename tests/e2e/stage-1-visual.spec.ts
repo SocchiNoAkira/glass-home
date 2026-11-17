@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
-import { captureViewport, clickButton, launchExtension, openNewTab, waitForSaved } from './helpers';
+import { captureViewport, cleanupProfile, clickButton, launchExtension, openNewTab, waitForSaved } from './helpers';
 
 test('captures the production home, editing and settings across breakpoints', async () => {
   const { context, extensionId, userDataDir } = await launchExtension();
@@ -44,6 +44,6 @@ test('captures the production home, editing and settings across breakpoints', as
     expect(unexpectedRequests).toEqual([]);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });

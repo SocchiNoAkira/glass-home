@@ -149,8 +149,16 @@ export function SettingsPanel({ settings, initialTab = 'appearance', wallpaperUr
         <fieldset className="settings-group"><legend>渐变壁纸</legend><div className="wallpaper-options">{(['dawn', 'dusk', 'sage'] as const).map((gradient) => <button key={gradient} type="button" className={`wallpaper-option wallpaper-option--${gradient} ${draft.wallpaperGradient === gradient && !draft.wallpaperAssetId ? 'is-selected' : ''}`} onClick={() => { update('wallpaperAssetId', null); update('wallpaperGradient', gradient); setPendingAsset(undefined); setPreview(undefined); }} aria-label={`${gradient === 'dawn' ? '晨曦' : gradient === 'dusk' ? '暮色' : '苔原'}渐变`} aria-pressed={draft.wallpaperGradient === gradient && !draft.wallpaperAssetId} />)}</div></fieldset>
         <div className="settings-row"><span>自定义壁纸 <small>图片仅保存在本地，最大 4MB</small></span><button type="button" className="button button--secondary button--small" onClick={() => wallpaperRef.current?.click()}><ImagePlus size={15} />选择图片</button><input ref={wallpaperRef} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void selectWallpaper(event.target.files?.[0])} /></div>
         {preview && <div className="wallpaper-preview" style={{ backgroundImage: `url(${JSON.stringify(preview).slice(1, -1)})` }} aria-label="自定义壁纸预览" />}
-        <label className="range-field"><span>背景模糊 <output>{draft.wallpaperBlur}px</output></span><input type="range" min="0" max="30" value={draft.wallpaperBlur} onChange={(event) => update('wallpaperBlur', Number(event.target.value))} /></label>
-        <label className="range-field"><span>明暗遮罩 <output>{draft.wallpaperOverlay}%</output></span><input type="range" min="0" max="70" value={draft.wallpaperOverlay} onChange={(event) => update('wallpaperOverlay', Number(event.target.value))} /></label>
+        <label className="range-field">
+          <span>背景模糊 <output>{draft.wallpaperBlur}px</output></span>
+          <input type="range" min="0" max="30" value={draft.wallpaperBlur} onChange={(event) => update('wallpaperBlur', Number(event.target.value))} />
+          <small className="range-field__hint">只作用于自定义壁纸图片。内置渐变本身是平滑色块，模糊看不出差别。</small>
+        </label>
+        <label className="range-field">
+          <span>明暗遮罩 <output>{draft.wallpaperOverlay}%</output></span>
+          <input type="range" min="0" max="70" value={draft.wallpaperOverlay} onChange={(event) => update('wallpaperOverlay', Number(event.target.value))} />
+          <small className="range-field__hint">在背景上盖一层：深色主题压暗、浅色主题提亮，用来保证文字可读。0% 表示原样显示。</small>
+        </label>
       </div>}
       {tab === 'search' && <div className="settings-section" role="tabpanel" aria-label="搜索设置">
         <label className="field" htmlFor="search-engine"><span>搜索引擎</span><select id="search-engine" value={draft.searchEngine} onChange={(event) => update('searchEngine', event.target.value as WorkspaceSettings['searchEngine'])}><option value="google">Google</option><option value="bing">Bing</option><option value="baidu">百度</option><option value="duckduckgo">DuckDuckGo</option><option value="custom">自定义模板</option></select></label>

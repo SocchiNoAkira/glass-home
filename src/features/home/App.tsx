@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Check, LayoutGrid, Plus, Redo2, Settings2, Sparkles, Undo2 } from 'lucide-react';
-import { LayoutInspector } from '@/src/features/grid/LayoutInspector';
+import { Check, LayoutGrid, Plus, Redo2, Settings2, Sparkles, Undo2, Wand2 } from 'lucide-react';
 import { useWorkspace } from '@/src/application/workspaceStore';
 import { HomeGrid } from '@/src/features/grid/HomeGrid';
 import { ShortcutEditor, type ShortcutDraft } from '@/src/features/shortcuts/ShortcutEditor';
 import { SettingsPanel, type SettingsTab } from '@/src/features/settings/SettingsPanel';
 import { ConfirmDialog } from '@/src/components/ConfirmDialog';
 import { RecoveryActions } from '@/src/features/settings/RecoveryActions';
-import { addShortcut, removeShortcut, updateSettings, updateShortcut } from '@/src/domain/workspace/commands';
+import { addShortcut, addWidget, removeShortcut, removeWidget, updateSettings, updateShortcut } from '@/src/domain/workspace/commands';
 import { createDefaultWorkspace } from '@/src/domain/workspace/defaults';
 import { decodeBackupAssets, backupWidgetRecords, downloadBackup, exportBackup, readBackupFile } from '@/src/infrastructure/persistence/backup';
 import { validateWorkspace } from '@/src/domain/workspace/schema';
-import type { Shortcut, Workspace, WorkspaceAsset, WorkspaceSettings } from '@/src/domain/workspace/model';
+import type { Shortcut, WidgetInstance, Workspace, WorkspaceAsset, WorkspaceSettings } from '@/src/domain/workspace/model';
+import { widgetCatalogEntry, type BuiltinWidgetId } from '@/src/domain/widget/catalog';
+import { WidgetGallery } from '@/src/features/widget/WidgetGallery';
 
 export function App() {
   const store = useWorkspace();
@@ -20,6 +21,8 @@ export function App() {
   const [editingShortcut, setEditingShortcut] = useState<Shortcut | null>();
   const [settingsTab, setSettingsTab] = useState<SettingsTab>();
   const [removingShortcut, setRemovingShortcut] = useState<Shortcut>();
+  const [widgetGallery, setWidgetGallery] = useState(false);
+  const [removingWidget, setRemovingWidget] = useState<WidgetInstance>();
   const [resetConfirm, setResetConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   // Per-namespace byte usage shown in the data tab, refreshed when the panel
@@ -148,7 +151,16 @@ export function App() {
   }
 
   const themeDark = workspace.settings.theme === 'system' ? systemDark : workspace.settings.theme === 'dark';
-  const wallpaperStyle = store.wallpaperUrl ? { backgroundImage: `url(${JSON.stringify(store.wallpaperUrl).slice(1, -1)})` } : undefined;
+  const wallpaperBlur = workspace.settings.wallpaperBlur;
+  const wallpaperStyle: React.CSSProperties | undefined = store.wallpaperUrl
+    ? {
+      backgroundImage: `url(${JSON.stringify(store.wallpaperUrl).slice(1, -1)})`,
+      // Blur belongs to the image, not to a backdrop-filter on the veil: a
+      // backdrop filter also had to fight the veil's own opacity, and with no
+      // custom image there was nothing to blur at all.
+      filter: wallpaperBlur > 0 ? `blur(${wallpaperBlur}px)` : undefined,
+    }
+    : undefined;
 
   /**
    * Runs a domain command that may throw *synchronously*, then commits it.
@@ -194,6 +206,41 @@ export function App() {
     );
   };
 
+  const addWidgetToScreen = (widgetId: BuiltinWidgetId) => {
+    runCommand(() => addWidget(workspace, widgetId), `已添加${widgetCatalogEntry(widgetId)?.label ?? '小组件'}。`);
+    setWidgetGallery(false);
+  };
+
+  /**
+   * Removes one widget and the data it owns.
+   *
+   * The data clear happens only after the workspace change is on disk: a failed
+   * save must not leave a widget on screen whose contents were already wiped.
+   * Clearing is also what keeps the data model honest — the settings panel and
+   * backups address widget data by the namespaces of *present* instances, so an
+   * orphan row would be invisible and unexportable.
+   */
+  const removeWidgetFromScreen = async (widget: WidgetInstance) => {
+    setRemovingWidget(undefined);
+    let next: Workspace;
+    try {
+      next = removeWidget(workspace, widget.instanceId);
+    } catch (error) {
+      store.reportError(error instanceof Error ? error.message : '移除小组件失败，请重试。');
+      return;
+    }
+    try {
+      await store.commit(next, '小组件已移除，它的数据也已清除。');
+    } catch {
+      return; // `commit` already surfaced the failure and rolled the workspace back.
+    }
+    try {
+      await store.clearWidgetData(widget.storageNamespace);
+    } catch (error) {
+      store.reportError(error instanceof Error ? `小组件已移除，但数据未能清除：${error.message}` : '小组件已移除，但数据未能清除。');
+    }
+  };
+
   const saveSettings = async (settings: WorkspaceSettings, asset?: WorkspaceAsset) => {
     setBusy(true);
     try {
@@ -212,24 +259,29 @@ export function App() {
     className={`app material-${workspace.settings.materialQuality} wallpaper-${workspace.settings.wallpaperGradient} ${themeDark ? 'theme-dark' : 'theme-light'} ${editMode ? 'is-editing' : ''} ${workspace.settings.reducedMotion ? 'reduced-motion' : ''}`}
     data-testid="glass-home-app" data-columns={store.columns} data-material={workspace.settings.materialQuality} data-theme={themeDark ? 'dark' : 'light'}
   >
-    <div className={`wallpaper wallpaper--${workspace.settings.wallpaperGradient}`} aria-hidden="true">
-      <div className="wallpaper__custom" style={wallpaperStyle} />
+    {/*
+      The decorations (colour orbs, horizon band, top/bottom and radial washes)
+      exist to turn a flat gradient into something that looks designed. A custom
+      image is already a picture, so they only paint a dirty pane of glass over
+      it: `wallpaper--custom` switches every one of them off in CSS, and the
+      light theme's brightness/saturation push is dropped with them.
+    */}
+    <div className={`wallpaper wallpaper--${workspace.settings.wallpaperGradient} ${store.wallpaperUrl ? 'wallpaper--custom' : ''}`} aria-hidden="true">
+      <div className={`wallpaper__custom ${wallpaperBlur > 0 ? 'wallpaper__custom--blurred' : ''}`} style={wallpaperStyle} />
       <div className="wallpaper__orb wallpaper__orb--peach" /><div className="wallpaper__orb wallpaper__orb--blue" /><div className="wallpaper__orb wallpaper__orb--lilac" />
       <div className="wallpaper__horizon" />
     </div>
     {/*
-      The overlay exists to tune the built-in gradients: they are decorative
-      colours that need a darkening/blur wash for text to stay legible. A custom
-      wallpaper is the user's own image, already chosen deliberately, so washing
-      it out with the same veil made the result look wrong — it is only applied
-      when no custom image is set. The blur/opacity controls remain available
-      for the gradient case.
+      "明暗遮罩": dims the background in dark theme, lightens it in light theme,
+      so text stays readable over whatever is behind it. It applies to a custom
+      image too — once the decorations are gone, this is the only thing tuning
+      the picture's contrast, and at 0% the image is shown untouched.
     */}
-    {!workspace.settings.wallpaperAssetId && <div
+    <div
       className="wallpaper-overlay"
-      style={{ opacity: workspace.settings.wallpaperOverlay / 100, backdropFilter: `blur(${workspace.settings.wallpaperBlur}px)` }}
+      style={{ opacity: workspace.settings.wallpaperOverlay / 100 }}
       aria-hidden="true"
-    />}
+    />
     <div className="page-shell">
       <header className="topbar">
         <a className="brand" href="#main-content" aria-label="Glass Home 首页" onClick={(event) => { event.preventDefault(); setEditMode(false); setSettingsTab(undefined); }}>
@@ -269,15 +321,24 @@ export function App() {
             onCommitLayout={store.commitLayoutPreview}
             onCancelLayout={store.cancelLayoutPreview}
             onWidgetError={(_instanceId, message) => store.reportError(message)}
+            onRemoveWidget={(instanceId) => setRemovingWidget(workspace.widgets.find((widget) => widget.instanceId === instanceId))}
           />
           {workspace.shortcuts.length === 0 && <div className="empty-state glass-surface"><h2>从这里，开始你的空间</h2><p>还没有快捷方式。添加常用网站，让主屏幕更像你。</p><button className="button button--primary" onClick={() => setEditingShortcut(null)}><Plus size={16} />添加快捷方式</button></div>}
-          {editMode && <LayoutInspector workspace={workspace} displayWorkspace={store.displayWorkspace ?? workspace} columns={store.columns} preview={store.preview} onPreview={store.previewLayout} onCancel={store.cancelLayoutPreview} onCommit={store.commitLayoutPreview} />}
         </div>
       </main>
       <footer className="bottom-bar">
         <div className="bottom-bar__left"><Sparkles size={14} /><span>{editMode ? '拖动图标或组件即可调整布局；选中后方向键微调，Alt+方向键改尺寸。' : '少一点干扰，多一点专注。拖动图标可调整布局。'}</span></div>
         <div className="bottom-bar__right">
-          {!editMode ? <button className="edit-button glass-control" onClick={() => setEditMode(true)}><LayoutGrid size={15} />编辑主屏幕</button> : <button className="done-button" onClick={() => setEditMode(false)}><Check size={16} />完成</button>}
+          {editMode && <button
+            className="icon-button add-button"
+            aria-label="整理布局"
+            title="紧凑整理：向上向左压缩空白，立即保存"
+            onClick={() => void store.compactLayout(store.columns).catch(() => undefined)}
+          ><Wand2 size={18} /></button>}
+          <button className="edit-button glass-control" onClick={() => setWidgetGallery(true)} aria-label="添加小组件"><Plus size={15} />小组件</button>
+          {!editMode
+            ? <button className="edit-button glass-control" onClick={() => setEditMode(true)}><LayoutGrid size={15} />编辑主屏幕</button>
+            : <button className="done-button" onClick={() => setEditMode(false)}><Check size={16} />完成</button>}
           <button className="icon-button add-button" aria-label="添加快捷方式" title="添加快捷方式" onClick={() => setEditingShortcut(null)}><Plus size={20} /></button>
         </div>
       </footer>
@@ -298,6 +359,20 @@ export function App() {
       onRequestWidgetData={() => void refreshWidgetSizes()}
       onClearWidgetData={clearWidgetData} onClearAllData={clearAllData} />}
     {removingShortcut && <ConfirmDialog title={`删除「${removingShortcut.title}」？`} description="将从所有断点移除此快捷方式。不会删除任何浏览记录或网站数据。" confirmLabel="删除快捷方式" dangerous onClose={() => setRemovingShortcut(undefined)} onConfirm={() => { runCommand(() => removeShortcut(workspace, removingShortcut.id), '快捷方式已删除。'); setRemovingShortcut(undefined); }} />}
+    {widgetGallery && <WidgetGallery
+      present={workspace.widgets.map((widget) => widget.widgetId)}
+      busy={busy}
+      onAdd={addWidgetToScreen}
+      onClose={() => setWidgetGallery(false)}
+    />}
+    {removingWidget && <ConfirmDialog
+      title={`移除「${widgetCatalogEntry(removingWidget.widgetId)?.label ?? '小组件'}」？`}
+      description="会从所有断点移除这个小组件，并清除它保存的数据（例如待办内容）。之后可以从「小组件」里重新添加。"
+      confirmLabel="移除小组件"
+      dangerous
+      onClose={() => setRemovingWidget(undefined)}
+      onConfirm={() => void removeWidgetFromScreen(removingWidget)}
+    />}
     {resetConfirm && <ConfirmDialog title="恢复默认主屏幕？" description="此操作会替换你的设置、布局、快捷方式和本地壁纸。建议先导出备份。" confirmLabel="恢复默认" dangerous onClose={() => setResetConfirm(false)} onConfirm={() => { setResetConfirm(false); void store.reset(createDefaultWorkspace()).catch((error: unknown) => store.reportError(error instanceof Error ? `恢复失败：${error.message}` : '恢复失败，请重试。')); }} />}
   </div>;
 }

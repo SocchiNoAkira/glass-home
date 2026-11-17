@@ -1,5 +1,6 @@
 import { expect, chromium, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs/promises';
 
 export const extensionPath = path.resolve('.output/chrome-mv3');
@@ -9,12 +10,20 @@ export const extensionPath = path.resolve('.output/chrome-mv3');
  * long visual-regression run cannot bloat the repo or fill remote file storage.
  * Override with GLASS_HOME_SHOTS when a run needs a different location.
  */
-export const shotsDir = process.env.GLASS_HOME_SHOTS ?? '/tmp/glass-home-shots';
+export const shotsDir = process.env.GLASS_HOME_SHOTS ?? path.join(os.tmpdir(), 'glass-home-shots');
 
+/**
+ * Every browser this suite opens is headless and intentionally so: a visible
+ * window would steal focus and keyboard from whatever else the machine is being
+ * used for. There is no flag to turn it back on.
+ */
 export async function launchExtension(existingUserDataDir?: string) {
-  const userDataDir = existingUserDataDir ?? await fs.mkdtemp(path.join(process.cwd(), 'artifacts', 'edge-profile-'));
+  // Outside the repo: a throwaway profile is ~700 files, and leaving those under
+  // `artifacts/` makes every later cleanup a large recursive delete (which some
+  // environments refuse). The OS temp dir is the right place for a scrapyard.
+  const userDataDir = existingUserDataDir ?? await fs.mkdtemp(path.join(os.tmpdir(), 'glass-home-profile-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    channel: 'msedge', headless: false, viewport: { width: 1440, height: 1000 },
+    channel: 'msedge', headless: true, viewport: { width: 1440, height: 1000 },
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
   });
   const preferencesPath = path.join(userDataDir, 'Default', 'Preferences');
@@ -34,6 +43,24 @@ export async function launchExtension(existingUserDataDir?: string) {
   const entry = preferences.extensions.chrome_url_overrides.newtab[0]?.entry;
   if (!entry) throw new Error('Glass Home is not registered as the new-tab override in Edge');
   return { context, extensionId: new URL(entry).host, userDataDir };
+}
+
+/**
+ * Removes a throwaway browser profile.
+ *
+ * Best effort on purpose: the profile is temporary (a few hundred files under the
+ * ignored `artifacts/` directory) and its removal must never turn a passing
+ * assertion into a red test. Deletes really do fail here now and then — a
+ * lingering browser handle, or a shell-safety wrapper that refuses a recursive
+ * delete of this many files — and none of that says anything about the product.
+ */
+export async function cleanupProfile(userDataDir: string | undefined): Promise<void> {
+  if (!userDataDir) return;
+  try {
+    await fs.rm(userDataDir, { recursive: true, force: true });
+  } catch (error) {
+    console.warn(`[cleanup] 临时浏览器 profile 未删除（不影响用例结论）：${userDataDir}`, error instanceof Error ? error.message : error);
+  }
 }
 
 export async function openNewTab(context: BrowserContext, extensionId: string): Promise<Page> {

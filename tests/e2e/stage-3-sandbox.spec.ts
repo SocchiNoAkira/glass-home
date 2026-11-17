@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs/promises';
-import { clickButton, clickTab, launchExtension, openNewTab } from './helpers';
+import { cleanupProfile, clickButton, clickTab, launchExtension, openNewTab } from './helpers';
 
 /**
  * Stage 3-C acceptance: the host <-> sandbox channel.
@@ -39,7 +38,7 @@ test('the sandbox demo completes a real environment handshake', async () => {
     await page.screenshot({ path: '/tmp/glass-home-shots/stage-3-sandbox-edge.png', fullPage: false });
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -91,7 +90,7 @@ test('the sandbox cannot reach the parent DOM or extension APIs while the channe
     await expect(page.locator('.sandbox-demo__status')).toHaveAttribute('data-sandbox-state', 'connected');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -128,6 +127,6 @@ test('the host ignores forged messages and a wrong instance id', async () => {
     expect(results.received).toBe(0);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });

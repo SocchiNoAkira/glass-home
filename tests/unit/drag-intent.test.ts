@@ -82,6 +82,35 @@ describe('drop intent resolution', () => {
   });
 });
 
+describe('grab anchor in drop targets', () => {
+  // A 2x2 widget grabbed by its bottom-right cell.
+  const GRABBED = item('todo', 2, 1, 2, 2);
+  const ANCHOR = { x: 1, y: 1 };
+
+  it('places the move target one cell back along both axes', () => {
+    const intent = resolveDropIntent(hit(5, 3), LAYOUT, GRABBED, COLUMNS, ANCHOR);
+    expect(intent.kind).toBe('move');
+    expect(intent.target).toEqual({ x: 4, y: 2, w: 2, h: 2 });
+  });
+
+  it('clamps the anchored target at the grid edge instead of going negative', () => {
+    const intent = resolveDropIntent(hit(0, 0), LAYOUT, GRABBED, COLUMNS, ANCHOR);
+    expect(intent.target).toEqual({ x: 0, y: 0, w: 2, h: 2 });
+  });
+
+  it('leaves swap alone: a swap takes the other object cell, wherever it was grabbed', () => {
+    const intent = resolveDropIntent(hit(1, 0), LAYOUT, GRABBED, COLUMNS, ANCHOR);
+    expect(intent.kind).toBe('swap');
+    expect(intent.target).toEqual({ x: 1, y: 0, w: 2, h: 2 });
+  });
+
+  it('leaves insertion alone: it is defined by the pointer in the gutter', () => {
+    const anchored = resolveDropIntent(hit(0, 0, false, true), LAYOUT, GRABBED, COLUMNS, ANCHOR);
+    const plain = resolveDropIntent(hit(0, 0, false, true), LAYOUT, GRABBED, COLUMNS);
+    expect(anchored).toEqual(plain);
+  });
+});
+
 describe('intent signature de-duplication', () => {
   it('is stable for the same target and preference', () => {
     const a = resolveDropIntent(hit(5, 0), LAYOUT, DRAGGED, COLUMNS);

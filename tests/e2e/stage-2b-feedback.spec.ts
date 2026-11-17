@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import fs from 'node:fs/promises';
-import { clickButton, launchExtension, openNewTab, waitForSaved } from './helpers';
+import { cleanupProfile, clickButton, launchExtension, openNewTab, waitForSaved } from './helpers';
 
 /**
  * Visual evidence fallback. Screenshots are written to artifacts/, but the
@@ -32,6 +31,23 @@ test('drag feedback is actually painted, sized and themed per intent', async () 
     const github = await itemCenter(page, 'github');
     const figma = await itemCenter(page, 'figma');
     await drag(page, github, figma, false);
+
+    // The gesture must not turn into "drag the selected text": pressing on a
+    // label and moving used to select it natively, and the browser then dragged
+    // the highlight instead of the icon. Text entry keeps its own selection.
+    const selection = await page.evaluate(() => {
+      const userSelect = (selector: string) => getComputedStyle(document.querySelector(selector) as Element).userSelect;
+      return {
+        selected: window.getSelection()?.toString() ?? '',
+        grid: userSelect('.unified-grid'),
+        label: userSelect('.shortcut__label'),
+        input: userSelect('.search-box input'),
+      };
+    });
+    expect(selection.selected).toBe('');
+    expect(selection.grid).toBe('none');
+    expect(selection.label).toBe('none');
+    expect(selection.input).toBe('text');
 
     const swap = await page.locator('.drag-target').evaluate((node) => {
       const style = getComputedStyle(node);
@@ -171,6 +187,127 @@ test('drag feedback is actually painted, sized and themed per intent', async () 
     await page.keyboard.press('Escape');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
+  }
+});
+
+/**
+ * The drop target is the object's top-left cell. Using the pointer's own cell as
+ * that top-left made a 4x2 calendar grabbed at its centre preview two cells to
+ * the right and one down, so the outline never agreed with the thing being
+ * carried. The grab offset is now subtracted from the pointer cell.
+ */
+test('the drop target keeps the grabbed point under the pointer', async () => {
+  const { context, extensionId, userDataDir } = await launchExtension();
+  try {
+    const page = await openNewTab(context, extensionId);
+    const calendar = page.locator('[data-instance-id="builtin.calendar"]');
+    const box = await calendar.boundingBox();
+    if (!box) throw new Error('calendar has no layout bounds');
+
+    const strides = await page.evaluate(() => {
+      const grid = document.querySelector('[data-testid="unified-grid"]') as HTMLElement;
+      const style = getComputedStyle(grid);
+      const columns = Number(grid.getAttribute('data-columns'));
+      const padLeft = Number.parseFloat(style.paddingLeft);
+      const padRight = Number.parseFloat(style.paddingRight);
+      const gapX = Number.parseFloat(style.columnGap);
+      const gapY = Number.parseFloat(style.rowGap);
+      const cellWidth = (grid.clientWidth - padLeft - padRight - gapX * (columns - 1)) / columns;
+      return { x: cellWidth + gapX, y: Number.parseFloat(style.gridAutoRows) + gapY };
+    });
+
+    /*
+      Grab the middle of the calendar's second cell, not its geometric centre:
+      the centre of a 4x2 widget lands in the gutter between its own cells (the
+      item is 4 cells plus 3 gutters wide), and a gutter press is an insertion,
+      a different gesture entirely. 1.5 strides is the centre of cell (1,1).
+    */
+    const grab = { x: box.x + strides.x * 1.5, y: box.y + strides.y * 1.5 };
+    await page.mouse.move(grab.x, grab.y);
+    await page.mouse.down();
+
+    // A wobble inside the grabbed cell resolves to the widget's own cell: the
+    // outline sits exactly on top of the calendar. Without the anchor the target
+    // is the pointer's cell, one stride down and right of it.
+    // The outline transitions between cells (200ms), so its position is polled
+    // instead of read once: a single read lands mid-animation.
+    const targetNear = (x: number, y: number) => expect.poll(async () => {
+      const rect = await page.locator('.drag-target').boundingBox();
+      return rect !== null && Math.abs(rect.x - x) < 2 && Math.abs(rect.y - y) < 2;
+    }, { timeout: 3000 }).toBe(true);
+
+    await page.mouse.move(grab.x + 8, grab.y + 8);
+    await targetNear(box.x, box.y);
+
+    // One row down: the preview must sit one row down from the widget itself,
+    // not from the pointer's cell.
+    await page.mouse.move(grab.x, grab.y + strides.y + 12);
+    await targetNear(box.x, box.y + strides.y);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.drag-target')).toHaveCount(0);
+  } finally {
+    await context.close();
+    await cleanupProfile(userDataDir);
+  }
+});
+
+/**
+ * The reference texture used to be a fixed 24px CSS pattern, which drew squares
+ * no cell could match: columns are fractional and rows are 92px. This case drags
+ * in normal mode and reads the painted gradients back out of the computed style,
+ * so "the square you see" is checked against the tracks actually rendered.
+ */
+test('drag texture is derived from the measured tracks, not a fixed pattern', async () => {
+  const { context, extensionId, userDataDir } = await launchExtension();
+  try {
+    const page = await openNewTab(context, extensionId);
+    const grid = page.locator('[data-testid="unified-grid"]');
+    const background = () => grid.evaluate((node) => getComputedStyle(node).backgroundImage);
+
+    // Baseline 7.1: normal mode stays quiet until a drag is actually in flight.
+    expect(await background()).toBe('none');
+
+    const github = await itemCenter(page, 'github');
+    const figma = await itemCenter(page, 'figma');
+    await drag(page, github, figma, false);
+
+    const tracks = await grid.evaluate((node) => {
+      const style = getComputedStyle(node);
+      const columns = Number(node.getAttribute('data-columns'));
+      const padLeft = Number.parseFloat(style.paddingLeft);
+      const padRight = Number.parseFloat(style.paddingRight);
+      const gapX = Number.parseFloat(style.columnGap);
+      const gapY = Number.parseFloat(style.rowGap);
+      return {
+        backgroundImage: style.backgroundImage,
+        backgroundOrigin: style.backgroundOrigin,
+        cellWidth: (node.clientWidth - padLeft - padRight - gapX * (columns - 1)) / columns,
+        rowHeight: Number.parseFloat(style.gridAutoRows),
+        gapX,
+        gapY,
+      };
+    });
+
+    const oneDecimal = (value: number) => Math.round(value * 10) / 10;
+    const stops = [...tracks.backgroundImage.matchAll(/(\d+(?:\.\d+)?)px/g)].map((match) => oneDecimal(Number(match[1])));
+
+    // The pattern starts on the first column, not on the padding edge. One value
+    // per background layer, hence the split rather than a single substring check.
+    expect(tracks.backgroundOrigin.split(',').map((value) => value.trim())).toEqual(['content-box', 'content-box']);
+    // Cell edges and stride both appear: one square = one cell, gutter included.
+    expect(stops).toContain(oneDecimal(tracks.cellWidth));
+    expect(stops).toContain(oneDecimal(tracks.cellWidth + tracks.gapX));
+    expect(stops).toContain(oneDecimal(tracks.rowHeight));
+    expect(stops).toContain(oneDecimal(tracks.rowHeight + tracks.gapY));
+    // 24px was the old fixed pitch; no real track on this viewport is that small.
+    expect(stops).not.toContain(24);
+
+    await page.keyboard.press('Escape');
+    expect(await background()).toBe('none');
+  } finally {
+    await context.close();
+    await cleanupProfile(userDataDir);
   }
 });

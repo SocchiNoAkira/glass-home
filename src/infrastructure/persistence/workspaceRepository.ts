@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { openDatabase, requestResult, transactionComplete, workspaceStore } from './database';
-import { createDefaultWorkspace } from '@/src/domain/workspace/defaults';
+import { createBlankWorkspace, createDefaultWorkspace } from '@/src/domain/workspace/defaults';
+import { hasSeededShortcuts, markShortcutsSeeded } from './seedState';
 import { DEFAULT_WORKSPACE_ID, WORKSPACE_SCHEMA_VERSION, type Workspace, type WorkspaceAsset, type WorkspaceBackupWidgetRecord } from '@/src/domain/workspace/model';
 import { normalizeWorkspace } from '@/src/domain/workspace/migration';
 import { validateWorkspace } from '@/src/domain/workspace/schema';
@@ -30,10 +31,21 @@ export class WorkspaceRepository {
     const { store } = workspaceStore(database, 'readonly');
     const stored = await requestResult(store.get(DEFAULT_WORKSPACE_ID)) as unknown;
     if (stored === undefined) {
-      const workspace = createDefaultWorkspace();
+      /*
+       * Only a genuine first install ships the 20 curated shortcuts. Once the
+       * screen exists, "clear all data" or a wiped workspace must come back
+       * empty — otherwise the presets the user deleted (or cleared) reappear,
+       * and a personal "new tab" keeps resetting to a demo screen.
+       */
+      const firstRun = !hasSeededShortcuts();
+      markShortcutsSeeded();
+      const workspace = firstRun ? createDefaultWorkspace() : createBlankWorkspace();
       await this.commit(workspace);
       return { status: 'ready', workspace };
     }
+    // An existing screen means the presets were already offered at some point,
+    // including for users whose workspace predates this marker.
+    markShortcutsSeeded();
     try {
       // Upgrade before validating: a v1 payload does not contain the to-do
       // widget, so the v2 validator would reject it and send an existing user

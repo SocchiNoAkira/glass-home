@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import fs from 'node:fs/promises';
-import { captureViewport, launchExtension, openNewTab, readStoredWorkspace } from './helpers';
+import { cleanupProfile, captureViewport, launchExtension, openNewTab, readStoredWorkspace } from './helpers';
 
 /**
  * Stage 3 acceptance in real Edge: the built-in to-do widget, its per-instance
@@ -79,7 +78,7 @@ test('adds to-dos, persists them across reload and keeps them out of the Workspa
     await captureViewport(page, 'stage-3-todo-edge.png');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -105,7 +104,7 @@ test('rejects blank and over-long input with a visible reason', async () => {
     await expect(page.locator('.todo-widget__item')).toHaveCount(1);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -144,7 +143,7 @@ test('deletes and clears completed items, and the clear button disables when emp
     await expect(page.locator('.todo-widget__item')).toHaveCount(1);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -206,7 +205,7 @@ test('upgrades a v1 workspace on load instead of demanding recovery', async () =
     await captureViewport(page, 'stage-3-migrated-edge.png');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -229,6 +228,6 @@ test('the to-do widget survives a full browser restart', async () => {
     await expect(page.locator('.todo-widget__item')).toContainText('重启后仍在');
   } finally {
     await reopened?.context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });

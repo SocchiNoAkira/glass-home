@@ -327,6 +327,38 @@ export function useWorkspace() {
     });
   }, [commitNow, updatePreview]);
 
+  /**
+   * One-click tidy: solve, apply and commit in one transaction.
+   *
+   * It used to open a preview and wait for a confirmation, which for a
+   * deterministic, fully undoable operation only added a step between the click
+   * and the result. Nothing is written when the layout cannot be improved, and a
+   * real failure is still surfaced instead of being swallowed.
+   */
+  const compactLayout = useCallback(async (breakpoint: GridColumns): Promise<void> => {
+    await enqueueCommitRef.current(async () => {
+      const current = workspaceRef.current;
+      if (!current) return;
+      previewCoordinatorRef.current.cancel();
+      updatePreview(undefined);
+      setSaveError(undefined);
+      try {
+        const result = solveLayout({ columns: breakpoint, items: current.layouts[breakpoint], command: { type: 'compact' }, budget: DEFAULT_SOLVE_BUDGET });
+        const candidate = createLayoutPreview(current, breakpoint, { type: 'compact' }, result, crypto.randomUUID());
+        if (candidate.status === 'blocked') {
+          // "Nothing to tidy" is an answer, not an error.
+          setNotice(candidate.reason.includes('没有变化') ? '已经是紧凑排列，没有可压缩的空白。' : candidate.reason);
+          return;
+        }
+        await commitNow(applyLayoutTransaction(current, candidate.transaction), '已整理并保存，可撤销。');
+        historyRef.current.record(candidate.transaction);
+        setHistoryVersion((version) => version + 1);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : '整理失败，请重试。');
+      }
+    });
+  }, [commitNow, updatePreview]);
+
   const undoLayout = useCallback(async (): Promise<void> => {
     await enqueueCommitRef.current(async () => {
       const current = workspaceRef.current;
@@ -374,7 +406,7 @@ export function useWorkspace() {
     loadError, saveState, saveError, notice, columns, wallpaperUrl,
     commit, commitImport, reset, changeWallpaper, reportError, clearError,
     clearWidgetData, clearAllData, widgetStorageUsage,
-    displayWorkspace, preview, previewLayout, cancelLayoutPreview, commitLayoutPreview,
+    displayWorkspace, preview, previewLayout, cancelLayoutPreview, commitLayoutPreview, compactLayout,
     undoLayout, redoLayout, clearHistory,
     canUndo: historyRef.current.canUndo, canRedo: historyRef.current.canRedo,
     historyVersion,

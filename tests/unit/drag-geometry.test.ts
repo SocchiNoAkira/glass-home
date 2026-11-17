@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  cellStrideX, cellStrideY, clampColumn, columnOffset, hitCell, rowOffset, type GridMetrics,
+  cellStrideX, cellStrideY, clampColumn, columnOffset, grabAnchor, hitCell, rowOffset, type GridMetrics,
 } from '@/src/domain/interaction/dragGeometry';
 
 /**
@@ -65,6 +65,29 @@ describe('hit cell resolution', () => {
     // Pointer above the grid starts still belongs to row 0 rather than -1.
     expect(hitCell(point(16, 10), METRICS).cell.y).toBe(0);
     expect(hitCell(point(-50, -50), METRICS).cell).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('grab anchor inside the dragged object', () => {
+  // 2x2 widget whose top-left cell is (2,1); see METRICS for the pixel layout.
+  const WIDGET = { x: 2, y: 1, w: 2, h: 2 };
+  const left = 16 + 2 * 90;
+  const top = 24 + 1 * 32;
+
+  it('reports the cell the pointer pressed, not the object corner', () => {
+    expect(grabAnchor(point(left + 5, top + 5), WIDGET, METRICS)).toEqual({ x: 0, y: 0 });
+    expect(grabAnchor(point(left + 95, top + 5), WIDGET, METRICS)).toEqual({ x: 1, y: 0 });
+    expect(grabAnchor(point(left + 5, top + 35), WIDGET, METRICS)).toEqual({ x: 0, y: 1 });
+    expect(grabAnchor(point(left + 100, top + 40), WIDGET, METRICS)).toEqual({ x: 1, y: 1 });
+  });
+
+  it('clamps to the object own span, so a press on its rim cannot offset it', () => {
+    expect(grabAnchor(point(left - 500, top - 500), WIDGET, METRICS)).toEqual({ x: 0, y: 0 });
+    expect(grabAnchor(point(left + 5000, top + 5000), WIDGET, METRICS)).toEqual({ x: 1, y: 1 });
+  });
+
+  it('is always the origin for a 1x1 icon', () => {
+    expect(grabAnchor(point(16 + 40, 24 + 10), { x: 0, y: 0, w: 1, h: 1 }, METRICS)).toEqual({ x: 0, y: 0 });
   });
 });
 

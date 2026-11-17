@@ -1,8 +1,11 @@
-import type { GridColumns, LayoutItem, Rect } from '@/src/domain/grid/model';
+import type { GridColumns, LayoutItem, Point, Rect } from '@/src/domain/grid/model';
 import { readingOrder } from '@/src/domain/grid/model';
 import { layoutHeight } from '@/src/domain/grid/occupancy';
 import type { LayoutCommand, LayoutPreference } from '@/src/domain/grid/solver';
 import { clampColumn, type CellHit, cellWithinRect } from './dragGeometry';
+
+/** No offset: the pointer's cell is the item's top-left, as for a 1x1 icon. */
+const NO_ANCHOR: Point = { x: 0, y: 0 };
 
 /**
  * Product baseline 6.2 splits the pointer surface into three intentions:
@@ -19,11 +22,22 @@ export function dropIntentKindLabel(intent: DropIntent): string {
   return intent.kind === 'swap' ? '交换' : '移动';
 }
 
+/**
+ * @param anchor Which cell inside the dragged item the pointer grabbed. The move
+ *   target is shifted back by it so the grabbed point stays under the pointer;
+ *   without this, dragging a 2x2 widget by its centre placed the target one cell
+ *   down and right of the thing being carried.
+ *
+ *   Swap and insert deliberately ignore it: a swap is "take that object's cell",
+ *   and an insertion is defined by the pointer's position in the gutter, not by
+ *   where inside the widget the drag started.
+ */
 export function resolveDropIntent(
   hit: CellHit,
   items: readonly LayoutItem[],
   dragged: LayoutItem,
   columns: GridColumns,
+  anchor: Point = NO_ANCHOR,
 ): DropIntent {
   const size = { w: dragged.w, h: dragged.h };
 
@@ -51,7 +65,12 @@ export function resolveDropIntent(
 
   return {
     kind: 'move',
-    target: { x: clampColumn(hit.cell.x, size.w, columns), y: hit.cell.y, w: size.w, h: size.h },
+    target: {
+      x: clampColumn(hit.cell.x - anchor.x, size.w, columns),
+      y: Math.max(0, hit.cell.y - anchor.y),
+      w: size.w,
+      h: size.h,
+    },
     preference: 'auto',
   };
 }

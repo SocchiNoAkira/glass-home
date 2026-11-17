@@ -23,10 +23,37 @@ export function Modal({ title, eyebrow, children, onClose, className = '' }: {
     };
   }, []);
 
+  /*
+    Escape closes the dialog through this listener, not through the native
+    `cancel` event.
+    
+    Chromium fires `cancel` on the dialog both for Escape *and* when a file
+    picker opened from inside the dialog is dismissed. Treating every `cancel` as
+    "close" therefore closed the whole settings panel — and discarded unsaved
+    edits — the moment someone canceled the import picker. `cancel` is now only
+    prevented (so the browser cannot close the element behind React's back), and
+    a real Escape keypress does the closing.
+
+    Only the topmost dialog reacts: confirm dialogs are opened above the settings
+    panel, and Escape must close one layer at a time.
+  */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const open = [...document.querySelectorAll('dialog[open]')];
+      if (open.at(-1) !== dialogRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeRef.current();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
   return (
     <dialog
       ref={dialogRef} className={`modal glass-panel ${className}`} aria-label={title}
-      onCancel={(event) => { event.preventDefault(); closeRef.current(); }}
+      onCancel={(event) => { event.preventDefault(); }}
       onClick={(event) => { if (event.target === event.currentTarget) closeRef.current(); }}
     >
       <div className="modal__inner">

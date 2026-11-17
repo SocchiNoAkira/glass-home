@@ -1,33 +1,46 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { click, clickButton, clickTab, launchExtension, openNewTab, readStoredWorkspace, waitForSaved } from './helpers';
+import { cleanupProfile, click, clickButton, clickTab, launchExtension, openNewTab, readStoredWorkspace, waitForSaved } from './helpers';
 import { extensionPath } from './helpers';
+
+/**
+ * Uploads a real PNG through the real file input, so the whole "pick a local
+ * image" path is exercised rather than a workspace written behind the UI's back.
+ */
+async function pickWallpaper(page: Page): Promise<void> {
+  const validPng = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 8;
+    canvas.height = 8;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Test canvas is unavailable');
+    const gradient = context.createLinearGradient(0, 0, 8, 8);
+    gradient.addColorStop(0, '#736b88');
+    gradient.addColorStop(1, '#e6b6aa');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 8, 8);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  if (!validPng) throw new Error('Test image was not generated');
+  await page.locator('input[type=file][accept="image/png,image/jpeg,image/webp"]').setInputFiles({ name: 'wallpaper.png', mimeType: 'image/png', buffer: Buffer.from(validPng, 'base64') });
+}
 
 test('exports and restores a local wallpaper with its Workspace in one flow', async () => {
   const { context, extensionId, userDataDir } = await launchExtension();
   try {
     const page = await openNewTab(context, extensionId);
     await clickButton(page, '打开设置');
-    const validPng = await page.evaluate(() => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 8;
-      canvas.height = 8;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Test canvas is unavailable');
-      const gradient = context.createLinearGradient(0, 0, 8, 8);
-      gradient.addColorStop(0, '#736b88');
-      gradient.addColorStop(1, '#e6b6aa');
-      context.fillStyle = gradient;
-      context.fillRect(0, 0, 8, 8);
-      return canvas.toDataURL('image/png').split(',')[1];
-    });
-    if (!validPng) throw new Error('Test image was not generated');
-    await page.locator('input[type=file][accept="image/png,image/jpeg,image/webp"]').setInputFiles({ name: 'wallpaper.png', mimeType: 'image/png', buffer: Buffer.from(validPng, 'base64') });
+    await pickWallpaper(page);
     await expect(page.getByLabel('自定义壁纸预览')).toBeVisible();
     await clickButton(page, '保存设置');
     await waitForSaved(page);
     await expect(page.locator('.wallpaper__custom')).toHaveCSS('background-image', /^url\("blob:/);
+    // A custom image is shown as a picture: the gradient wallpaper's decorations
+    // (colour orbs, horizon band, gradient washes) must not paint over it.
+    await expect(page.locator('.wallpaper')).toHaveClass(/wallpaper--custom/);
+    await expect(page.locator('.wallpaper__orb').first()).toHaveCSS('display', 'none');
+    await expect(page.locator('.wallpaper__horizon')).toHaveCSS('display', 'none');
     await clickButton(page, '打开设置');
     await clickTab(page, '数据');
     const downloadPromise = page.waitForEvent('download');
@@ -38,6 +51,9 @@ test('exports and restores a local wallpaper with its Workspace in one flow', as
     await click(page.getByRole('dialog', { name: '恢复默认主屏幕？' }).getByRole('button', { name: '恢复默认', exact: true }));
     await waitForSaved(page);
     await expect(page.locator('.wallpaper__custom')).toHaveCSS('background-image', 'none');
+    // Back to the generated gradient, so its decorations return with it.
+    await expect(page.locator('.wallpaper')).not.toHaveClass(/wallpaper--custom/);
+    await expect(page.locator('.wallpaper__orb').first()).not.toHaveCSS('display', 'none');
     await page.reload();
     await waitForSaved(page);
     await clickButton(page, '打开设置');
@@ -52,7 +68,7 @@ test('exports and restores a local wallpaper with its Workspace in one flow', as
     expect(backup.assets).toHaveLength(1);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -93,7 +109,7 @@ test('recovers from a corrupt Workspace using a valid backup and preserves raw e
     await expect(page.locator('.shortcut')).toHaveCount(20);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -156,13 +172,64 @@ test('persists an immediate post-submit reload and keeps the sandbox isolated', 
     }), `chrome-extension://${extensionId}`);
     expect(sandboxResult).toMatchObject({ parentAccess: 'blocked', extensionApiAccess: 'blocked' });
     const manifest = JSON.parse(await fs.readFile(path.join(extensionPath, 'manifest.json'), 'utf8')) as { permissions?: string[]; host_permissions?: string[]; content_security_policy?: { sandbox?: string } };
-    expect(manifest.permissions ?? []).toEqual([]);
+    // `favicon` is the only permission: it lets the browser hand back an icon it
+    // already cached, and it must never grow into host access.
+    expect(manifest.permissions ?? []).toEqual(['favicon']);
     expect(manifest.host_permissions ?? []).toEqual([]);
     expect(manifest.content_security_policy?.sandbox).not.toContain('unsafe-eval');
     expect(manifest.content_security_policy?.sandbox).toContain("connect-src 'none'");
     expect((await readStoredWorkspace(page) as { shortcuts: unknown[] }).shortcuts).toHaveLength(21);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
+  }
+});
+
+/**
+ * Regression: both sliders used to be dead for a custom wallpaper. The blur was
+ * a backdrop-filter on a veil that was not rendered at all, so "背景模糊" blurred
+ * nothing and "明暗遮罩" changed an element that did not exist. They now act on
+ * the background itself, and the effect has to be measurable, not just "there".
+ */
+test('blur and dim sliders act on a custom wallpaper', async () => {
+  const { context, extensionId, userDataDir } = await launchExtension();
+  try {
+    const page = await openNewTab(context, extensionId);
+    await clickButton(page, '打开设置');
+    await pickWallpaper(page);
+    await clickButton(page, '保存设置');
+    await waitForSaved(page);
+
+    // Defaults come from the workspace: no blur, a 24% veil.
+    await expect(page.locator('.wallpaper__custom')).toHaveCSS('filter', 'none');
+    await expect(page.locator('.wallpaper-overlay')).toHaveCSS('opacity', '0.24');
+
+    // End sends the focused range to its maximum, which is a real user gesture.
+    await clickButton(page, '打开设置');
+    await clickTab(page, '外观');
+    const ranges = page.locator('.range-field input[type="range"]');
+    await ranges.nth(0).focus();
+    await page.keyboard.press('End');
+    await ranges.nth(1).focus();
+    await page.keyboard.press('End');
+    await clickButton(page, '保存设置');
+    await waitForSaved(page);
+    await expect(page.locator('.wallpaper__custom')).toHaveCSS('filter', 'blur(30px)');
+    await expect(page.locator('.wallpaper-overlay')).toHaveCSS('opacity', '0.7');
+
+    // Home returns both to 0: the picture is then shown untouched.
+    await clickButton(page, '打开设置');
+    await clickTab(page, '外观');
+    await ranges.nth(0).focus();
+    await page.keyboard.press('Home');
+    await ranges.nth(1).focus();
+    await page.keyboard.press('Home');
+    await clickButton(page, '保存设置');
+    await waitForSaved(page);
+    await expect(page.locator('.wallpaper__custom')).toHaveCSS('filter', 'none');
+    await expect(page.locator('.wallpaper-overlay')).toHaveCSS('opacity', '0');
+  } finally {
+    await context.close();
+    await cleanupProfile(userDataDir);
   }
 });

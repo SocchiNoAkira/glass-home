@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import fs from 'node:fs/promises';
-import { captureViewport, clickButton, launchExtension, openNewTab, waitForSaved } from './helpers';
+import { cleanupProfile, captureViewport, clickButton, launchExtension, openNewTab, waitForSaved } from './helpers';
 
 /**
  * Stage 2B-1 visual evidence. The drag target only exists while the pointer is
@@ -65,6 +64,6 @@ test('captures the live drag feedback in normal and edit mode', async () => {
     await page.keyboard.press('Escape');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });

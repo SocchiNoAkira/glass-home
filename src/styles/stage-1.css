@@ -135,6 +135,7 @@
 .range-field { display: block; margin-top: 16px; font-size: 12px; color: var(--text-soft); }
 .range-field > span { display: flex; justify-content: space-between; }
 .range-field input { width: 100%; accent-color: #e4c3cd; margin-top: 10px; }
+.range-field__hint { display: block; margin-top: 7px; color: var(--text-muted); font-size: 10px; line-height: 1.6; }
 .settings-note { font-size: 12px; line-height: 1.9; color: var(--text-muted); }
 .settings-section h3 { font-size: 14px; font-weight: 500; }
 .data-actions { display: flex; gap: 10px; margin: 20px 0 25px; }

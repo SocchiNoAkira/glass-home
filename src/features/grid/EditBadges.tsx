@@ -50,21 +50,29 @@ export function EditBadges({ label, removable, onRemove, onMenu, menuLabel = '�
 }
 
 /**
- * Badge pair for a built-in widget: "..." only.
+ * Badge pair for a built-in widget: X removes, "..." holds the rest.
  *
- * The X is deliberately absent. `validateWorkspace` requires every id in
- * `BUILTIN_WIDGET_IDS` to exist in all three breakpoints and there is no remove
- * command, so a remove button here could only ever surface an error. Offering
- * an action that cannot succeed is worse than not offering it; when the schema
- * gains widget removal, `removable` can be flipped on.
+ * The X used to be absent because the schema required every built-in widget to
+ * exist, so a remove control could only ever surface an error. Widgets became
+ * removable (the gallery re-adds them), so the badge now matches shortcuts:
+ * one visible target per action, and the destructive one is behind a confirm
+ * dialog in `App`.
  */
-export function WidgetEditBadge({ label, locked, onToggleLock }: {
+export function WidgetEditBadge({ label, locked, onToggleLock, onRemove }: {
   readonly label: string;
   readonly locked: boolean;
   readonly onToggleLock: () => void;
+  readonly onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
   return <>
+    <button
+      type="button"
+      className="edit-badge edit-badge--remove"
+      onClick={(event) => { event.stopPropagation(); onRemove(); }}
+      aria-label={`移除 ${label} 小组件`}
+      title="移除小组件"
+    ><X size={13} strokeWidth={2.6} /></button>
     <button
       type="button"
       className="edit-badge edit-badge--menu"
@@ -75,7 +83,10 @@ export function WidgetEditBadge({ label, locked, onToggleLock }: {
     {open && <EditMenu
       label={label}
       onClose={() => setOpen(false)}
-      actions={[{ label: locked ? '解锁位置' : '锁定位置', icon: locked ? 'unlock' : 'lock', onSelect: onToggleLock }]}
+      actions={[
+        { label: locked ? '解锁位置' : '锁定位置', icon: locked ? 'unlock' : 'lock', onSelect: onToggleLock },
+        { label: '移除小组件', icon: 'delete', onSelect: onRemove, dangerous: true },
+      ]}
     />}
   </>;
 }

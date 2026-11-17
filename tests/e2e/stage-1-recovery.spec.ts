@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs/promises';
-import { clickButton, clickTab, launchExtension, openNewTab, readStoredWorkspace, waitForSaved } from './helpers';
+import { cleanupProfile, clickButton, clickTab, launchExtension, openNewTab, readStoredWorkspace, waitForSaved } from './helpers';
 
 const titles = ['GitHub', 'Figma', 'Notion', 'Linear', 'Apple', 'YouTube', 'Gmail', 'Calendar', 'Vercel', 'MDN', 'ChatGPT', 'Claude', 'X', 'Dribbble', '翻译', '地图', '云端硬盘', '音乐', 'Wikipedia', '稍后阅读'];
 
@@ -24,7 +23,7 @@ test('restores shortcuts and settings after a full browser restart', async () =>
     await expect(restored.getByTestId('glass-home-app')).toHaveAttribute('data-theme', 'light');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -48,7 +47,7 @@ test('shows an empty state after deleting every shortcut without losing builtins
     await expect(page.getByRole('heading', { name: '从这里，开始你的空间' })).toBeVisible();
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -78,7 +77,7 @@ test('suppresses accidental navigation after pointer movement without changing l
     await destination.close();
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -116,6 +115,6 @@ test('rolls back a failed write and rejects an invalid backup without mutating t
     await expect(page.locator('.shortcut')).toHaveCount(20);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });

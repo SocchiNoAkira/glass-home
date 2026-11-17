@@ -197,3 +197,22 @@
   .todo-widget { padding: 10px 12px; gap: 6px; }
   .todo-widget__summary { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+ * Widget gallery (add / remove widgets).
+ * iOS puts these behind a "+" while editing: one list of widget types, with an
+ * already-placed type shown as such instead of a second add button.
+ * ------------------------------------------------------------------------- */
+.widget-gallery { width: min(560px, calc(100vw - 48px)); }
+.widget-gallery__list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.widget-card { display: flex; align-items: center; gap: 13px; padding: 12px 14px; border: 1px solid #ffffff1f; border-radius: 14px; background: #ffffff09; }
+.widget-card.is-added { opacity: .6; }
+.widget-card__icon { flex: 0 0 auto; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; border: 1px solid #ffffff29; background: #ffffff14; color: var(--text); }
+.widget-card__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.widget-card__text strong { font-size: 13px; font-weight: 550; }
+.widget-card__text small { font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+.widget-card__state { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+@media (max-width: 719px) {
+  .widget-card__text small { display: none; }
+}

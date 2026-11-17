@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import fs from 'node:fs/promises';
-import { clickButton, launchExtension, openNewTab, readStoredWorkspace, waitForSaved } from './helpers';
+import { cleanupProfile, clickButton, launchExtension, openNewTab, readStoredWorkspace, waitForSaved } from './helpers';
 
 /**
  * Stage 2B-1 acceptance in a real Edge window.
@@ -74,7 +73,7 @@ test('drags an icon in normal mode, previews without persisting and cancels with
     await expect(page.locator('.layout-preview-banner')).toHaveCount(0);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -117,7 +116,7 @@ test('commits a drag on release and keeps it undoable', async () => {
     expect(stride).toBeGreaterThan(0);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -145,7 +144,7 @@ test('a second drag right after the first cannot be overwritten by a stale previ
     await expect(page.locator('[data-testid="unified-grid"]')).not.toHaveAttribute('data-drag-instance', 'github');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -188,7 +187,7 @@ test('arrow keys move the focused object and Alt+Arrow resizes a widget, keeping
     await expect(page.locator('[data-instance-id="builtin.calendar"]')).toHaveAttribute('data-grid-h', '2');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -198,10 +197,10 @@ test('a locked object refuses to drag and refuses keyboard moves', async () => {
     const page = await openNewTab(context, extensionId);
     await clickButton(page, '编辑主屏幕');
 
-    // Lock the calendar through the existing inspector, which is the 2A path.
-    await page.locator('#layout-object').selectOption('builtin.calendar');
-    await clickButton(page, '锁定对象');
-    await clickButton(page, '确认并保存');
+    // Lock the calendar from its own edit badge: locking is a layout
+    // transaction, so it goes through the same preview→commit path as a drag.
+    await clickButton(page, '更多操作：日历');
+    await clickButton(page, '锁定位置');
     await waitForSaved(page);
     await expect(page.locator('[data-instance-id="builtin.calendar"]')).toHaveAttribute('data-locked', 'true');
 
@@ -221,6 +220,6 @@ test('a locked object refuses to drag and refuses keyboard moves', async () => {
     expect(await readStoredWorkspace(page)).toEqual(before);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { GridColumns, LayoutItem, Rect } from '@/src/domain/grid/model';
+import type { GridColumns, LayoutItem, Point, Rect } from '@/src/domain/grid/model';
 import type { LayoutCommand, LayoutPreference } from '@/src/domain/grid/solver';
 import type { GridMetrics } from '@/src/domain/interaction/dragGeometry';
-import { hitCell } from '@/src/domain/interaction/dragGeometry';
+import { grabAnchor, hitCell } from '@/src/domain/interaction/dragGeometry';
 import type { DropIntent } from '@/src/domain/interaction/dragIntent';
 import {
   commandForIntent,
@@ -38,6 +38,8 @@ interface DragSession {
   readonly instanceId: string;
   readonly item: LayoutItem;
   readonly origin: Rect;
+  /** Cell inside the item that was grabbed; filled in when the drag starts. */
+  anchor: Point;
   readonly layout: readonly LayoutItem[];
   readonly element: HTMLElement;
   readonly startX: number;
@@ -162,6 +164,7 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
       instanceId: item.instanceId,
       item,
       origin: { x: item.x, y: item.y, w: item.w, h: item.h },
+      anchor: { x: 0, y: 0 },
       layout: options.layout,
       element,
       startX: event.clientX,
@@ -190,6 +193,14 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
       }
       session.started = true;
       metricsRef.current = measured;
+      // Which cell of the object was grabbed. The drop target is shifted back by
+      // this much, so the grabbed point stays under the pointer instead of the
+      // object's top-left snapping to it.
+      session.anchor = grabAnchor(
+        localPointFromEvent(grid, session.startX, session.startY),
+        session.origin,
+        measured,
+      );
       setInstanceId(session.instanceId);
       setOrigin(session.origin);
       setMetrics(measured);
@@ -242,7 +253,7 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
 
     // While unsettled, treat a gutter hit as its left/top neighbour's body.
     const effectiveHit = (!settled && (hit.inGapX || hit.inGapY)) ? { ...hit, inGapX: false, inGapY: false } : hit;
-    applyIntent(session, resolveDropIntent(effectiveHit, session.layout, session.item, options.columns));
+    applyIntent(session, resolveDropIntent(effectiveHit, session.layout, session.item, options.columns, session.anchor));
   };
 
   /**
@@ -302,7 +313,7 @@ export function useGridDrag(options: GridDragOptions): GridDragController {
         && session.dwell.key.cellY === key.cellY
         && session.dwell.key.axis === key.axis;
       if (!stillHere) { session.dwell = undefined; return; }
-      applyIntent(session, resolveDropIntent(hit, session.layout, session.item, optionsRef.current.columns));
+      applyIntent(session, resolveDropIntent(hit, session.layout, session.item, optionsRef.current.columns, session.anchor));
     }, Math.max(0, delayMs));
   }
 

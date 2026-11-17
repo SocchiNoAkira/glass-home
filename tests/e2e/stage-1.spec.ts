@@ -2,7 +2,7 @@ import { test, expect, type BrowserContext } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  click, clickButton, clickTab, launchExtension, openNewTab,
+  cleanupProfile, click, clickButton, clickTab, launchExtension, openNewTab,
   readStoredWorkspace, waitForSaved,
 } from './helpers';
 
@@ -41,7 +41,7 @@ test.describe('stage 1 core home on installed Edge', () => {
 
   test.afterAll(async () => {
     await context?.close();
-    if (userDataDir) await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   });
 
   test('initializes every builtin and shortcut in three valid breakpoint layouts', async () => {

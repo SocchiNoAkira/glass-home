@@ -1,4 +1,4 @@
-import type { GridColumns, Point } from '@/src/domain/grid/model';
+import type { GridColumns, Point, Rect } from '@/src/domain/grid/model';
 
 /**
  * Stage 2B geometry is intentionally layout-independent: the caller measures
@@ -70,6 +70,33 @@ export function hitCell(point: LocalPoint, metrics: GridMetrics): CellHit {
 
 export function cellWithinRect(cell: Point, rect: Readonly<Point & { readonly w: number; readonly h: number }>): boolean {
   return cell.x >= rect.x && cell.x < rect.x + rect.w && cell.y >= rect.y && cell.y < rect.y + rect.h;
+}
+
+/**
+ * Which cell *inside* the dragged item the pointer grabbed.
+ *
+ * The drop target is expressed as the item's top-left cell. Using the pointer's
+ * own cell as that top-left meant grabbing a 2x2 widget near its centre moved
+ * the target half a widget away from the pointer: the outline sat one cell down
+ * and right of the thing being carried. Anchoring the target by this offset
+ * keeps the grabbed point under the pointer, so the outline and the carried
+ * element agree.
+ *
+ * Values are clamped to the item's own span: a press on the padding/gutter just
+ * outside still anchors on the nearest real cell rather than offsetting by a
+ * fraction of a cell.
+ */
+export function grabAnchor(point: LocalPoint, item: Rect, metrics: GridMetrics): Point {
+  return {
+    x: cellOffsetWithin(item.x, item.w, point.x, metrics.padLeft, cellStrideX(metrics)),
+    y: cellOffsetWithin(item.y, item.h, point.y, metrics.padTop, cellStrideY(metrics)),
+  };
+}
+
+function cellOffsetWithin(start: number, span: number, pointer: number, pad: number, stride: number): number {
+  if (!(stride > 0)) return 0;
+  const offset = pointer - pad - start * stride;
+  return Math.min(Math.max(Math.floor(offset / stride), 0), Math.max(0, span - 1));
 }
 
 export function clampColumn(x: number, width: number, columns: GridColumns): number {

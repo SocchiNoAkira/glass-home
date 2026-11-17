@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { captureViewport, click, clickButton, clickTab, launchExtension, openNewTab, readStoredWorkspace, waitForSaved } from './helpers';
+import { captureViewport, cleanupProfile, click, clickButton, clickTab, launchExtension, openNewTab, readStoredWorkspace, waitForSaved } from './helpers';
 
 /**
  * Stage 4 acceptance in real Edge: backup must carry widget data (baseline
@@ -142,7 +142,7 @@ test('a backup carries widget data and restores the to-do list after a full clea
     await captureViewport(page, 'stage-4-backup-widget-data-edge.png');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -184,7 +184,7 @@ test('clearing one widget drops only that widget data and keeps the widget in pl
     await expect(page.locator('.todo-widget__item')).toHaveCount(0);
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -215,7 +215,7 @@ test('an older backup without a widget-data field keeps the current to-do list',
     await expect(page.locator('.todo-widget__item')).toContainText('不应该被旧备份删掉');
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });
 
@@ -269,8 +269,12 @@ test('clear all data also removes custom images, and the screen comes back empty
 
     await expect(page.locator('.wallpaper__custom')).toHaveCSS('background-image', 'none');
     await expect(page.locator('.todo-widget__item')).toHaveCount(0);
+    // The 20 curated shortcuts are a first-install experience. After an explicit
+    // clear, the screen must come back empty instead of rebuilding the demo set.
+    await expect(page.locator('.grid-item--shortcut')).toHaveCount(0);
+    await expect(page.locator('.empty-state')).toBeVisible();
   } finally {
     await context.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await cleanupProfile(userDataDir);
   }
 });

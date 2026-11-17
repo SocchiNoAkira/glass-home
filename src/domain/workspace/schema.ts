@@ -124,15 +124,24 @@ export function validateWorkspace(value: unknown): Workspace {
     if (error) throw new Error(error);
   }
 
-  const expectedIds = [...shortcutIds, ...BUILTIN_WIDGET_IDS];
-  for (const widgetId of BUILTIN_WIDGET_IDS) {
-    if (!widgetIds.includes(widgetId)) throw new Error(`缺少内置组件实例：${widgetId}`);
-    if (!candidate.installedWidgets.some((widget) => widget.widgetId === widgetId)) throw new Error(`缺少内置组件声明：${widgetId}`);
-  }
+  /*
+   * Widgets are removable now, so a workspace is no longer required to carry
+   * every built-in type: `[]` is a legitimate home screen. What must still hold
+   * is the pairing between declarations and instances — an instance whose type
+   * was never declared would have no known implementation, and two instances
+   * sharing a storage namespace would read and clear each other's data.
+   */
+  const expectedIds = [...shortcutIds, ...widgetIds];
   for (const widget of candidate.widgets) {
     if (!BUILTIN_WIDGET_IDS.includes(widget.widgetId as (typeof BUILTIN_WIDGET_IDS)[number])) {
       throw new Error('此版本只能导入已支持的内置组件，不能导入可执行第三方组件。');
     }
+    if (!candidate.installedWidgets.some((declared) => declared.widgetId === widget.widgetId)) {
+      throw new Error(`缺少内置组件声明：${widget.widgetId}`);
+    }
+  }
+  if (!unique(candidate.widgets.map((widget) => widget.storageNamespace))) {
+    throw new Error('组件数据命名空间不能重复。');
   }
   for (const breakpoint of GRID_BREAKPOINTS) {
     const items = candidate.layouts[breakpoint];

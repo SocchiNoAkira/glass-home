@@ -110,12 +110,12 @@
   box-shadow: 0 2px 8px #120d1a4d;
 }
 
-/* In normal mode the grid stays quiet until a drag actually starts (7.1). */
+/* The reference texture is generated inline from the measured tracks
+   (`features/grid/gridTexture.ts`) instead of living here: a fixed 24px pattern
+   could never line up with fractional column widths and 92px rows, so it drew
+   squares that no cell matched. This class now only carries the clipping radius
+   and the "normal mode wakes up on drag" state hook. */
 .unified-grid--dragging {
-  background-image:
-    linear-gradient(#ffffff12 1px, transparent 1px),
-    linear-gradient(90deg, #ffffff12 1px, transparent 1px);
-  background-size: 24px 24px;
   border-radius: 18px;
 }
 
