@@ -213,9 +213,6 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
-      '@playwright/test':
-        specifier: 1.65.0
-        version: 1.65.0
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
@@ -231,18 +228,12 @@ importers:
       '@wxt-dev/module-react':
         specifier: 1.2.2
         version: 1.2.2(vite@7.3.7(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.33.0))(wxt@0.21.5(esbuild@0.28.2)(rolldown@1.2.16)(rollup@4.67.5)(typescript@7.0.2)(vite@7.3.7(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.33.0)))
-      fast-check:
-        specifier: 4.10.2
-        version: 4.10.2
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vite:
         specifier: 7.3.7
         version: 7.3.7(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.33.0)
-      vitest:
-        specifier: ^4.1.12
-        version: 4.1.12(@types/node@26.6.6)(vite@7.3.7(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.33.0))
       wxt:
         specifier: 0.21.5
         version: 0.21.5(esbuild@0.28.2)(rolldown@1.2.16)(rollup@4.67.5)(typescript@7.0.2)(vite@7.3.7(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.33.0))
