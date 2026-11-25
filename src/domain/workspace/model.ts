@@ -33,6 +33,7 @@ export interface WorkspaceSettings {
   readonly showSeconds: boolean;
   readonly showDate: boolean;
   readonly showWeekday: boolean;
+  /** Kept for backup compatibility; the calendar always renders the month view. */
   readonly calendarMode: 'compact' | 'month';
   readonly weekStartsOn: 0 | 1;
   readonly wallpaperGradient: WallpaperGradient;

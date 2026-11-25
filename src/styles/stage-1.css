@@ -30,10 +30,6 @@
 .calendar-widget .mini-button { width: 24px; height: 24px; border-radius: 6px; }
 .mini-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: transparent; color: var(--text-soft); border-radius: 7px; }
 .mini-button:hover { background: #ffffff1a; }
-.calendar-widget__body { display: flex; flex: 1 1 auto; text-align: left; color: inherit; background: transparent; padding: 0; align-items: center; gap: 10px; margin: 0; }
-.calendar-widget__body .calendar-widget__day { font-size: 52px; }
-.calendar-widget__body strong { font-size: 13px; }
-.calendar-widget__body p { font-size: 10px; margin-top: 6px; }
 .calendar-widget--month { padding: 14px; }
 .month-calendar { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 3px; margin: 0; }
 .month-calendar__week, .month-calendar__days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); column-gap: 0; text-align: center; }
@@ -187,9 +183,6 @@
   .search-box input { font-size: 14px; }
   .calendar-widget { padding: 12px; }
   .calendar-widget .mini-button { width: 22px; height: 22px; }
-  .calendar-widget__body .calendar-widget__day { font-size: 46px; }
-  .calendar-widget__body p { font-size: 9px; }
-  .calendar-widget__body strong { font-size: 12px; }
   .month-calendar__days span { width: min(17px, 100%); font-size: 9px; }
   .shortcut__icon { width: 46px; height: 46px; border-radius: 13px; }
   .shortcut__label { font-size: 10px; }
@@ -208,9 +201,6 @@
   .unified-grid { grid-auto-rows: 76px; }
   .clock-widget .clock { font-size: 60px; }
   .calendar-widget { padding: 10px; }
-  .calendar-widget__body { gap: 8px; }
-  .calendar-widget__body .calendar-widget__day { font-size: 40px; }
-  .calendar-widget__body p { display: none; }
   .month-calendar__week { font-size: 8px; }
   .month-calendar__days { font-size: 8px; }
   .month-calendar__days span { width: min(16px, 100%); }

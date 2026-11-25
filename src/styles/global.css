@@ -146,7 +146,6 @@ button svg, a svg { flex-shrink: 0; }
 .topbar { height: 94px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 17px; letter-spacing: -.45px; font-weight: 570; }
 .brand[data-ink] { color: var(--text); }
-.brand__badge { font-size: 8px; letter-spacing: 1px; font-weight: 550; border: 1px solid color-mix(in srgb, currentColor 23%, transparent); border-radius: 4px; padding: 3px 4px; margin-left: 9px; vertical-align: 2px; opacity: .65; }
 .brand__mark { width: 29px; height: 29px; display: flex; align-items: center; justify-content: center; gap: 3px; transform: rotate(-16deg); }
 .brand__mark span { width: 6px; height: 24px; border: 1.4px solid color-mix(in srgb, currentColor 86%, transparent); border-radius: 5px; box-shadow: inset 2px 1px 3px color-mix(in srgb, currentColor 16%, transparent); }
 .brand__mark span:nth-child(2) { height: 29px; background: color-mix(in srgb, currentColor 9%, transparent); }
@@ -226,12 +225,6 @@ kbd { font-family: inherit; font-size: 13px; line-height: 19px; height: 21px; wi
 .widget__topline { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text-soft); }
 .widget__eyebrow { font-size: 14px; font-weight: 500; letter-spacing: .2px; }
 .widget__icon { opacity: .7; }
-.calendar-widget__body { display: flex; gap: 15px; align-items: center; margin-top: 8px; }
-.calendar-widget__day { font-size: 51px; line-height: 1; font-weight: 260; letter-spacing: -2px; }
-.calendar-widget__body strong { font-size: 14px; font-weight: 500; }
-.calendar-widget__body p { margin: 7px 0 0; font-size: 12px; color: var(--text-muted); }
-.calendar-widget__week { display: flex; justify-content: space-between; margin-top: 14px; font-size: 9px; color: var(--text-muted); }
-.calendar-widget__week span:first-child { color: var(--text); }
 .weather-widget__body { display: flex; gap: 19px; align-items: center; margin-top: 4px; }
 .weather-widget__body > strong { font-size: 46px; font-weight: 250; line-height: 1.2; letter-spacing: -2px; }
 .weather-widget__body span { font-size: 13px; }
@@ -346,9 +339,6 @@ kbd { font-family: inherit; font-size: 13px; line-height: 19px; height: 21px; wi
   .shortcut-grid { column-gap: 7px; }
   .shortcut__icon { width: 52px; height: 52px; border-radius: 14px; }
   .widget { padding: 17px; }
-  .calendar-widget__body { gap: 10px; }
-  .calendar-widget__day { font-size: 42px; }
-  .calendar-widget__body p { font-size: 9px; }
 }
 
 @media (max-width: 940px) {
@@ -364,7 +354,7 @@ kbd { font-family: inherit; font-size: 13px; line-height: 19px; height: 21px; wi
   .page-shell { padding: 0 20px; }
   .topbar { height: 72px; }
   .brand { font-size: 15px; gap: 7px; }
-  .brand__badge, .local-status, .topbar__right > .icon-button, .topbar__divider { display: none; }
+  .local-status, .topbar__right > .icon-button, .topbar__divider { display: none; }
   .home-content { padding-top: 26px; }
   .time-section__greeting { font-size: 7px; letter-spacing: 2px; }
   .clock { font-size: 91px; letter-spacing: -4px; }

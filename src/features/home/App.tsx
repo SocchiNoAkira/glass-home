@@ -297,7 +297,7 @@ export function App() {
     <div className="page-shell">
       <header className="topbar">
         <a className="brand" href="#main-content" aria-label="Glass Home 首页" data-adaptive-ink="" onClick={(event) => { event.preventDefault(); setEditMode(false); setSettingsTab(undefined); }}>
-          <span className="brand__mark"><span /><span /><span /></span><span>Glass Home<span className="brand__badge">BETA</span></span>
+          <span className="brand__mark"><span /><span /><span /></span><span>Glass Home</span>
         </a>
         <div className="topbar__right" data-adaptive-ink="">
           <span className={`local-status local-status--${store.saveState}`} role="status" data-save-state={store.saveState}><span className="status-dot" />{store.saveState === 'saving' ? '正在保存到本地…' : store.saveState === 'error' ? '本地保存需要处理' : '一切就绪，只在本地'}</span>

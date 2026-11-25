@@ -1,6 +1,6 @@
 # Glass Home：权限与隐私说明
 
-适用于版本 **0.1.0**（`glass-home-0.1.0-chrome.zip`）。本文只陈述**已实测或可在构建产物中核对**的事实；未验证的行为不作承诺。
+适用于版本 **1.0.0**（`glass-home-1.0.0-chrome.zip`）。本文只陈述**已实测或可在构建产物中核对**的事实；未验证的行为不作承诺。
 
 ## 一句话结论
 
@@ -18,7 +18,7 @@ Glass Home 是一个**纯本地**新标签页：只申请 `favicon` 一项权限
 核对方式（解压发布包后）：
 
 ```bash
-unzip -p glass-home-0.1.0-chrome.zip manifest.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['permissions'], d['host_permissions'])"
+unzip -p glass-home-1.0.0-chrome.zip manifest.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['permissions'], d['host_permissions'])"
 # 预期输出：['favicon'] []
 ```
 
@@ -110,5 +110,6 @@ sandbox:     sandbox allow-scripts; script-src 'self' 'unsafe-inline'; object-sr
 
 ## 变更记录
 
+- **1.0.0（2026-11-25）**：首个正式版本。加入自适应文字对比度，调整时钟、日历与待办组件布局，日历固定显示完整月历；权限与本地数据处理方式保持不变。
 - **0.1.0**：首次发布候选。经 Edge 实测；备份纳入组件数据；提供两个独立的清除入口（单组件 / 全部）。
 - **0.1.0（2026-11-17 补充）**：新增 `favicon` 权限，用于把快捷方式显示为站点真实图标。仍无 `host_permissions`，扩展自身不发起网络请求；图标读取浏览器已缓存的副本，本扩展不落库、不进入备份。

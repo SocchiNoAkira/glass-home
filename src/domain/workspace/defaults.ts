@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS: WorkspaceSettings = {
   theme: 'dark', materialQuality: 'balanced', reducedMotion: false,
   searchEngine: 'google', customSearchTemplate: '', openTarget: 'new',
   timeFormat: '24h', timeZone: 'system', showSeconds: false, showDate: true, showWeekday: true,
-  calendarMode: 'compact', weekStartsOn: 1,
+  calendarMode: 'month', weekStartsOn: 1,
   wallpaperGradient: 'dawn', wallpaperAssetId: null, wallpaperBlur: 0, wallpaperOverlay: 24,
 };
 
