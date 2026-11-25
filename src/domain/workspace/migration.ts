@@ -1,4 +1,9 @@
+import {
+  DEFAULT_SOLVE_BUDGET, solveLayout,
+  type LayoutCommand,
+} from '@/src/domain/grid/solver';
 import { GRID_BREAKPOINTS, findFirstFit, isValidConstrainedLayout, type GridColumns, type LayoutItem } from '@/src/domain/grid/model';
+import { widgetCatalogEntry } from '@/src/domain/widget/catalog';
 import { TODO_WIDGET_ID, type WidgetInstance, type Workspace } from './model';
 
 /**
@@ -17,7 +22,6 @@ import { TODO_WIDGET_ID, type WidgetInstance, type Workspace } from './model';
  */
 
 export const TODO_WIDGET_VERSION = '1.0.0';
-export const TODO_DEFAULT_SIZE = { w: 2, h: 2 } as const;
 
 /** Ids that existed before v2, in a stable order. */
 export const V1_WIDGET_IDS = ['builtin.clock', 'builtin.search', 'builtin.calendar'] as const;
@@ -47,7 +51,7 @@ function todoInstance(): WidgetInstance {
 
 /** Places the to-do widget in the first free cell, growing a row if needed. */
 function placeTodo(items: readonly LayoutItem[], columns: GridColumns, order: number): LayoutItem[] {
-  const size = { w: Math.min(TODO_DEFAULT_SIZE.w, columns), h: TODO_DEFAULT_SIZE.h };
+  const size = widgetCatalogEntry(TODO_WIDGET_ID)?.footprint[columns] ?? { w: 3, h: 2 };
   const spot = findFirstFit(items, size, columns);
   // `findFirstFit` scans one row past the current content, so a full page still
   // yields a slot on the new row rather than failing the migration.
@@ -97,6 +101,82 @@ export function migrateWorkspace(input: Workspace): MigrationResult {
     installedWidgets: [...input.installedWidgets, { widgetId: TODO_WIDGET_ID, version: TODO_WIDGET_VERSION }],
   };
   return { status: 'migrated', workspace: next, detail: '已加入内置待办组件。' };
+}
+
+/** Built-ins whose preferred footprint changed after the initial release. */
+const RESIZED_WIDGETS = ['builtin.clock', 'builtin.calendar', TODO_WIDGET_ID] as const;
+
+function resizeWidgetInLayout(
+  items: readonly LayoutItem[],
+  columns: GridColumns,
+  instanceId: string,
+  target: { readonly w: number; readonly h: number },
+): readonly LayoutItem[] | undefined {
+  const current = items.find((item) => item.instanceId === instanceId);
+  if (!current || (current.w === target.w && current.h === target.h)) return items;
+
+  // A locked object still has to adopt the new footprint; its lock is restored
+  // after the reflow so the migration does not quietly unlock user choices.
+  const unlocked = current.locked
+    ? items.map((item) => item.instanceId === instanceId ? { ...item, locked: false } : item)
+    : items;
+  const resizeAt = (x: number, y: number): LayoutCommand => ({
+    type: 'resize', instanceId, target: { x, y, ...target },
+  });
+
+  let result = solveLayout({
+    columns, items: unlocked, command: resizeAt(current.x, current.y),
+    preference: 'push-first', budget: DEFAULT_SOLVE_BUDGET,
+  });
+  if (result.status !== 'ok') {
+    const without = unlocked.filter((item) => item.instanceId !== instanceId);
+    const spot = findFirstFit(without, { ...target, instanceId }, columns);
+    if (spot) {
+      result = solveLayout({
+        columns, items: unlocked, command: resizeAt(spot.x, spot.y),
+        preference: 'push-first', budget: DEFAULT_SOLVE_BUDGET,
+      });
+    }
+  }
+  if (result.status !== 'ok') return undefined;
+
+  const candidate = result.candidate.map((item) =>
+    item.instanceId === instanceId ? { ...item, locked: current.locked } : item);
+  return isValidConstrainedLayout(candidate, columns) ? candidate : undefined;
+}
+
+/**
+ * Brings saved widgets onto the current preferred footprints.
+ *
+ * This is deliberately not a schema-version bump: the old sizes stay legal in
+ * the constraints, so backups and edited layouts remain importable, while a
+ * stored screen is gently reflowed the next time it is loaded.
+ */
+export function normalizeWidgetFootprints(workspace: Workspace): { readonly workspace: Workspace; readonly changed: boolean } {
+  const layouts = { ...workspace.layouts } as Record<GridColumns, readonly LayoutItem[]>;
+  let changed = false;
+  for (const columns of GRID_BREAKPOINTS) {
+    let items = workspace.layouts[columns];
+    for (const instanceId of RESIZED_WIDGETS) {
+      const target = widgetCatalogEntry(instanceId)?.footprint[columns];
+      if (!target) continue;
+      const next = resizeWidgetInLayout(items, columns, instanceId, target);
+      if (next && next !== items) {
+        items = next;
+        changed = true;
+      }
+    }
+    layouts[columns] = items;
+  }
+  if (!changed) return { workspace, changed: false };
+  return {
+    workspace: {
+      ...workspace, layouts,
+      revision: workspace.revision + 1,
+      updatedAt: new Date().toISOString(),
+    },
+    changed: true,
+  };
 }
 
 /**

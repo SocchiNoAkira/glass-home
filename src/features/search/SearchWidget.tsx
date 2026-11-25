@@ -32,10 +32,11 @@ export function SearchWidget({ settings }: {
   return (
     <section className="grid-widget search-widget" aria-label="搜索组件">
       <form className="search-box glass-control" onSubmit={submit} role="search">
-        <Search size={19} strokeWidth={1.7} />
+        <span className="search-box__icon" data-adaptive-ink=""><Search size={19} strokeWidth={1.7} /></span>
         <input
           type="search" value={query} onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索或输入网址" aria-label="搜索或输入网址" autoComplete="off" spellCheck={false}
+          data-adaptive-ink=""
         />
         {/*
           The engine badge used to sit here as a dropdown trigger. It competed
@@ -43,9 +44,9 @@ export function SearchWidget({ settings }: {
           setting once, so it now lives solely in Settings → 搜索. The engine
           still drives the query; only the visible switch is gone.
         */}
-        <kbd>↵</kbd>
+        <kbd data-adaptive-ink="">↵</kbd>
       </form>
-      {message && <p className="search-message" role="alert">{message}</p>}
+      {message && <p className="search-message" role="alert" data-adaptive-ink="">{message}</p>}
     </section>
   );
 }

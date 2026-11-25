@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, LayoutGrid, Plus, Redo2, Settings2, Sparkles, Undo2, Wand2 } from 'lucide-react';
 import { useWorkspace } from '@/src/application/workspaceStore';
+import { useAdaptiveInk } from '@/src/features/theme/adaptiveInk';
 import { HomeGrid } from '@/src/features/grid/HomeGrid';
 import { ShortcutEditor, type ShortcutDraft } from '@/src/features/shortcuts/ShortcutEditor';
 import { SettingsPanel, type SettingsTab } from '@/src/features/settings/SettingsPanel';
@@ -133,12 +134,24 @@ export function App() {
     window.location.reload();
   };
 
+  const themeDark = workspace
+    ? workspace.settings.theme === 'system' ? systemDark : workspace.settings.theme === 'dark'
+    : systemDark;
+
+  useAdaptiveInk({
+    wallpaperUrl: store.wallpaperUrl,
+    wallpaperGradient: workspace?.settings.wallpaperGradient ?? 'dawn',
+    theme: themeDark ? 'dark' : 'light',
+    overlay: workspace?.settings.wallpaperOverlay ?? 0,
+    revision: workspace?.revision ?? 0,
+  });
+
   if (!workspace) {
     return <div className="app app--loading theme-dark">
       <div className="wallpaper wallpaper--dawn" aria-hidden="true" />
-      <main className="loading-screen">
+      <main className="loading-screen" data-adaptive-ink="">
         <span className="brand__mark"><span /><span /><span /></span>
-        {store.loadError ? <div className="recovery-card glass-panel" role="alert">
+        {store.loadError ? <div className="recovery-card glass-panel" role="alert" data-adaptive-ink="">
           <h1>主屏幕需要恢复</h1><p>{store.loadError}</p>
           <RecoveryActions onExport={exportRawWorkspace} onImport={importWorkspace} onReset={() => setResetConfirm(true)} />
         </div> : <p role="status">正在打开你的空间…</p>}
@@ -150,7 +163,6 @@ export function App() {
     </div>;
   }
 
-  const themeDark = workspace.settings.theme === 'system' ? systemDark : workspace.settings.theme === 'dark';
   const wallpaperBlur = workspace.settings.wallpaperBlur;
   const wallpaperStyle: React.CSSProperties | undefined = store.wallpaperUrl
     ? {
@@ -284,10 +296,10 @@ export function App() {
     />
     <div className="page-shell">
       <header className="topbar">
-        <a className="brand" href="#main-content" aria-label="Glass Home 首页" onClick={(event) => { event.preventDefault(); setEditMode(false); setSettingsTab(undefined); }}>
+        <a className="brand" href="#main-content" aria-label="Glass Home 首页" data-adaptive-ink="" onClick={(event) => { event.preventDefault(); setEditMode(false); setSettingsTab(undefined); }}>
           <span className="brand__mark"><span /><span /><span /></span><span>Glass Home<span className="brand__badge">BETA</span></span>
         </a>
-        <div className="topbar__right">
+        <div className="topbar__right" data-adaptive-ink="">
           <span className={`local-status local-status--${store.saveState}`} role="status" data-save-state={store.saveState}><span className="status-dot" />{store.saveState === 'saving' ? '正在保存到本地…' : store.saveState === 'error' ? '本地保存需要处理' : '一切就绪，只在本地'}</span>
           <button className="icon-button" aria-label="撤销布局" title="撤销布局" disabled={!store.canUndo || Boolean(store.preview)} onClick={() => void store.undoLayout().catch((error: unknown) => store.reportError(error instanceof Error ? error.message : '撤销失败。'))}><Undo2 size={17} /></button>
           <button className="icon-button" aria-label="重做布局" title="重做布局" disabled={!store.canRedo || Boolean(store.preview)} onClick={() => void store.redoLayout().catch((error: unknown) => store.reportError(error instanceof Error ? error.message : '重做失败。'))}><Redo2 size={17} /></button>
@@ -323,11 +335,11 @@ export function App() {
             onWidgetError={(_instanceId, message) => store.reportError(message)}
             onRemoveWidget={(instanceId) => setRemovingWidget(workspace.widgets.find((widget) => widget.instanceId === instanceId))}
           />
-          {workspace.shortcuts.length === 0 && <div className="empty-state glass-surface"><h2>从这里，开始你的空间</h2><p>还没有快捷方式。添加常用网站，让主屏幕更像你。</p><button className="button button--primary" onClick={() => setEditingShortcut(null)}><Plus size={16} />添加快捷方式</button></div>}
+          {workspace.shortcuts.length === 0 && <div className="empty-state glass-surface" data-adaptive-ink=""><h2>从这里，开始你的空间</h2><p>还没有快捷方式。添加常用网站，让主屏幕更像你。</p><button className="button button--primary" onClick={() => setEditingShortcut(null)}><Plus size={16} />添加快捷方式</button></div>}
         </div>
       </main>
       <footer className="bottom-bar">
-        <div className="bottom-bar__left"><Sparkles size={14} /><span>{editMode ? '拖动图标或组件即可调整布局；选中后方向键微调，Alt+方向键改尺寸。' : '少一点干扰，多一点专注。拖动图标可调整布局。'}</span></div>
+        <div className="bottom-bar__left" data-adaptive-ink=""><Sparkles size={14} /><span>{editMode ? '拖动图标或组件即可调整布局；选中后方向键微调，Alt+方向键改尺寸。' : '少一点干扰，多一点专注。拖动图标可调整布局。'}</span></div>
         <div className="bottom-bar__right">
           {editMode && <button
             className="icon-button add-button"

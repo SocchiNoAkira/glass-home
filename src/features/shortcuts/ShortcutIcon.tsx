@@ -91,7 +91,7 @@ export function ShortcutIcon({ shortcut, editMode, locked = false, onEdit, onDup
             />
             : <span className="shortcut__initials">{shortcut.icon || fallbackIcon(shortcut.title)}</span>}
         </span>
-        <span className="shortcut__label">{shortcut.title}</span>
+        <span className="shortcut__label" data-adaptive-ink="">{shortcut.title}</span>
       </a>
       {/*
         iOS-style corner badges: X removes, "..." holds the rest. Shortcuts are

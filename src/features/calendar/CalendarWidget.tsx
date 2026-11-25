@@ -72,7 +72,7 @@ export function CalendarWidget({ settings }: { readonly settings: WorkspaceSetti
   const browse = (delta: number) => setView({ ...moveMonth(view.year, view.month, delta), followed: false });
 
   return (
-    <section className={`grid-widget calendar-widget glass-surface calendar-widget--${mode}`} aria-label="日历组件">
+    <section className={`grid-widget calendar-widget glass-surface calendar-widget--${mode}`} aria-label="日历组件" data-adaptive-ink="">
       <div className="widget__topline">
         <span className="widget__eyebrow">{monthLabel}</span>
         <div className="calendar-widget__actions">

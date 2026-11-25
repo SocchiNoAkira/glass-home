@@ -52,7 +52,7 @@ export function Modal({ title, eyebrow, children, onClose, className = '' }: {
 
   return (
     <dialog
-      ref={dialogRef} className={`modal glass-panel ${className}`} aria-label={title}
+      ref={dialogRef} className={`modal glass-panel ${className}`} aria-label={title} data-adaptive-ink=""
       onCancel={(event) => { event.preventDefault(); }}
       onClick={(event) => { if (event.target === event.currentTarget) closeRef.current(); }}
     >

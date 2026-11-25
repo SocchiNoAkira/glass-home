@@ -32,7 +32,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     widgetId: 'builtin.clock',
     label: '时钟',
     description: '大号时间、日期与问候语。',
-    footprint: { 10: { w: 6, h: 2 }, 8: { w: 4, h: 2 }, 5: { w: 5, h: 2 } },
+    footprint: { 10: { w: 4, h: 2 }, 8: { w: 4, h: 2 }, 5: { w: 4, h: 2 } },
   },
   {
     widgetId: 'builtin.search',
@@ -44,13 +44,13 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     widgetId: 'builtin.calendar',
     label: '日历',
     description: '日期，可切换为整月视图。',
-    footprint: { 10: { w: 4, h: 2 }, 8: { w: 4, h: 2 }, 5: { w: 4, h: 2 } },
+    footprint: { 10: { w: 2, h: 2 }, 8: { w: 2, h: 2 }, 5: { w: 2, h: 2 } },
   },
   {
     widgetId: 'builtin.todo',
     label: '待办',
     description: '本地清单，回车添加，离线可用。',
-    footprint: { 10: { w: 2, h: 2 }, 8: { w: 2, h: 2 }, 5: { w: 2, h: 2 } },
+    footprint: { 10: { w: 3, h: 2 }, 8: { w: 3, h: 2 }, 5: { w: 3, h: 2 } },
   },
 ];
 

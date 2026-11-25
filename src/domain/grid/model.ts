@@ -64,10 +64,12 @@ export type LayoutConstraints = Readonly<Record<string, SizeConstraint>>;
 export const SHORTCUT_SIZE: SizeConstraint = { presets: [[1, 1]], minW: 1, minH: 1, maxW: 1, maxH: 1 };
 
 export const BUILTIN_SIZE_CONSTRAINTS: Readonly<Record<string, SizeConstraint>> = {
-  'builtin.clock': { presets: [[4, 2], [5, 2], [6, 2]], minW: 4, minH: 2, maxW: 6, maxH: 2 },
+  // Older presets stay legal so saved layouts and backups remain importable;
+  // the catalog defines the footprint used for fresh and re-added widgets.
+  'builtin.clock': { presets: [[3, 2], [4, 2], [5, 2], [6, 2]], minW: 3, minH: 2, maxW: 6, maxH: 2 },
   'builtin.search': { presets: [[5, 1], [6, 1]], minW: 5, minH: 1, maxW: 6, maxH: 1 },
-  'builtin.calendar': { presets: [[4, 2], [4, 4]], minW: 4, minH: 2, maxW: 4, maxH: 4 },
-  'builtin.todo': { presets: [[2, 2], [4, 2], [4, 4]], minW: 2, minH: 2, maxW: 4, maxH: 4 },
+  'builtin.calendar': { presets: [[2, 2], [3, 2], [4, 2], [4, 4]], minW: 2, minH: 2, maxW: 4, maxH: 4 },
+  'builtin.todo': { presets: [[2, 2], [3, 2], [4, 2], [4, 4]], minW: 2, minH: 2, maxW: 4, maxH: 4 },
 };
 
 export function constraintsForItem(item: LayoutItem, constraints: LayoutConstraints = BUILTIN_SIZE_CONSTRAINTS): SizeConstraint {

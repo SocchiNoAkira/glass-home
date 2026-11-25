@@ -1,4 +1,5 @@
 import { GRID_BREAKPOINTS, findFirstFit, type GridColumns, type LayoutItem } from '@/src/domain/grid/model';
+import { widgetCatalogEntry } from '@/src/domain/widget/catalog';
 import { SHORTCUT_SEEDS } from '@/src/features/home/data';
 import {
   BUILTIN_WIDGET_IDS,
@@ -36,27 +37,28 @@ export function createDefaultLayouts(shortcuts: readonly Shortcut[]): Record<Gri
   return Object.fromEntries(GRID_BREAKPOINTS.map((columns) => {
     const widgets = createBuiltinWidgets();
     const rows: LayoutItem[] = [];
-    const add = (instanceId: string, x: number, y: number, w: number, h: number, order: number) => {
-      rows.push({ instanceId, kind: 'shortcut', breakpoint: columns, locked: false, order, x, y, w, h });
+    const sizeOf = (instanceId: string, kind: LayoutItem['kind']) =>
+      kind === 'shortcut'
+        ? { w: 1, h: 1 }
+        : widgetCatalogEntry(instanceId)?.footprint[columns] ?? { w: 2, h: 2 };
+    const add = (instanceId: string, kind: LayoutItem['kind'], x: number, y: number, order: number) => {
+      rows.push({ instanceId, kind, breakpoint: columns, locked: false, order, x, y, ...sizeOf(instanceId, kind) });
     };
-    // The three original builtins keep exactly the cells they had in stage 2A.
-    // Moving them would change the accepted default composition.
-    if (columns === 10) {
-      add('builtin.clock', 0, 0, 6, 2, 0);
-      add('builtin.calendar', 6, 0, 4, 2, 1);
-      add('builtin.search', 0, 2, 6, 1, 2);
-    } else if (columns === 8) {
-      add('builtin.clock', 0, 0, 4, 2, 0);
-      add('builtin.calendar', 4, 0, 4, 2, 1);
-      add('builtin.search', 0, 2, 6, 1, 2);
+
+    if (columns === 5) {
+      // A 4-column clock leaves no room beside the calendar, so the narrow
+      // breakpoint stacks the calendar above the full-width search field.
+      add('builtin.clock', 'widget', 0, 0, 0);
+      add('builtin.calendar', 'widget', 0, 2, 1);
+      add('builtin.search', 'widget', 0, 4, 2);
     } else {
-      add('builtin.clock', 0, 0, 5, 2, 0);
-      add('builtin.search', 0, 2, 5, 1, 1);
-      add('builtin.calendar', 0, 3, 4, 2, 2);
+      add('builtin.clock', 'widget', 0, 0, 0);
+      add('builtin.calendar', 'widget', 4, 0, 1);
+      add('builtin.search', 'widget', 0, 2, 2);
     }
     const firstShortcutRow = columns === 5 ? 5 : 3;
     shortcuts.forEach((shortcut, index) => {
-      add(shortcut.id, index % columns, firstShortcutRow + Math.floor(index / columns), 1, 1, index + 3);
+      add(shortcut.id, 'shortcut', index % columns, firstShortcutRow + Math.floor(index / columns), index + 3);
     });
 
     // The to-do widget is appended into the first free cell *after* every
@@ -73,11 +75,8 @@ export function createDefaultLayouts(shortcuts: readonly Shortcut[]): Record<Gri
   })) as Record<GridColumns, LayoutItem[]>;
 }
 
-/** Default to-do footprint; the grid constraints allow 2x2, 4x2 and 4x4. */
-const TODO_DEFAULT_FOOTPRINT = { w: 2, h: 2 } as const;
-
 function placeTodo(items: readonly LayoutItem[], columns: GridColumns): { x: number; y: number; w: number; h: number } {
-  const size = { w: Math.min(TODO_DEFAULT_FOOTPRINT.w, columns), h: TODO_DEFAULT_FOOTPRINT.h };
+  const size = widgetCatalogEntry('builtin.todo')?.footprint[columns] ?? { w: 3, h: 2 };
   const spot = findFirstFit(items, size, columns);
   // `findFirstFit` scans one row past the content, so this always resolves on
   // an otherwise legal layout; the fallback keeps the type non-optional.

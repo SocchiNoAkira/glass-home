@@ -139,3 +139,11 @@
   .edit-badge { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .edit-menu { border: 1px solid CanvasText; }
 }
+
+/* Status colours keep their meaning, but must remain legible when adaptive ink
+   chose the dark palette over a light wallpaper. */
+[data-ink="dark"] .local-status--error,
+[data-ink="dark"] .todo-widget__notice,
+[data-ink="dark"] .form-error,
+[data-ink="dark"] .edit-menu__item.is-dangerous { color: #883b3f; }
+[data-ink="dark"] .local-status--error .status-dot { background: #883b3f; }

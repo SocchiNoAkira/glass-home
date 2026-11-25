@@ -102,6 +102,7 @@ export function TodoWidget({ instanceId, storage, namespace, dataVersion = 0, on
     <section
       className="grid-widget todo-widget glass-surface"
       aria-label="待办组件"
+      data-adaptive-ink=""
       data-widget-instance={instanceId}
       data-todo-count={summary.total}
       data-todo-remaining={summary.remaining}

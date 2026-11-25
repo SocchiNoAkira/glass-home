@@ -67,7 +67,7 @@ export function EditMenu({ label, actions, onClose }: {
     };
   }, [onClose]);
 
-  return <div ref={ref} className="edit-menu glass-surface" role="group" aria-label={`${label} 的操作`}>
+  return <div ref={ref} className="edit-menu glass-surface" role="group" aria-label={`${label} 的操作`} data-adaptive-ink="">
     {actions.map((action) => {
       const Icon = ICONS[action.icon];
       return <button
