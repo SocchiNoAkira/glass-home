@@ -15,3 +15,9 @@ audit/
 # design drafts) stay local. Only the user-facing permission statement ships.
 docs/*
 !docs/privacy-and-permissions.md
+
+# The test suite is a development tool, not part of what you load into a browser.
+# It stays on the author's machine; the published repo is the extension itself.
+tests/
+vitest.config.ts
+playwright.config.ts

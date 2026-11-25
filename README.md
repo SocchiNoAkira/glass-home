@@ -23,16 +23,6 @@ pnpm zip            # 打包可分发的 zip
 
 > **只加载 `.output/chrome-mv3`**。`pnpm dev` 另行生成 `.output/chrome-mv3-dev`，那份内含连接 `ws://localhost:3000` 的热更新客户端：开发服务器没在跑时，扩展错误页会报 `WebSocket connection to 'ws://localhost:3000/' failed` 与 `[wxt] Failed to connect to dev server`。要用开发版就先运行 `pnpm dev` 并保持该进程，用完从浏览器移除。
 
-## 测试
-
-```bash
-pnpm check                      # 类型检查 + 单元/属性测试 + 生产构建
-pnpm build && pnpm test:e2e     # 真实 Microsoft Edge 加载生产扩展
-```
-
-- **E2E 全程无窗口（headless）**：不打开可见浏览器，不抢焦点与键盘，运行期间可以照常使用电脑。
-- 每条用例使用系统临时目录里的独立浏览器 profile；trace 与失败截图也写到系统临时目录。仓库内 `artifacts/` 只保留 `e2e-results.json` 这类单文件报告。
-
 ## 能力概览
 
 - 离线可用的新标签页：时钟、日期、月历、搜索。首次安装附 20 个预设快捷方式，之后只通过「+」添加自己的。
