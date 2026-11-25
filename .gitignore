@@ -10,3 +10,8 @@ audit/
 .env
 .env.*
 !.env.example
+
+# Internal development notes (progress log, requirements baseline, audit report,
+# design drafts) stay local. Only the user-facing permission statement ships.
+docs/*
+!docs/privacy-and-permissions.md

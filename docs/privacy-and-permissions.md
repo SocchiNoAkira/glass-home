@@ -80,7 +80,7 @@ unzip -p glass-home-0.1.0-chrome.zip manifest.json | python3 -c "import json,sys
 - 只能向宿主请求一项只读能力：主题、语言、尺寸、减少动态、材质档位；
 - 无 `web_accessible_resources` 声明，外部网页无法引用它。
 
-该页在生产包中的存在已记录为已知问题（见实现方案「跨阶段未完成清单」第 8 项）；它不构成数据访问面。
+该页存在于生产包中，但它不构成数据访问面；若将来严格剔除开发示例页，会在构建配置里移除该入口。
 
 ## 内容安全策略（CSP）
 
@@ -92,7 +92,7 @@ sandbox:     sandbox allow-scripts; script-src 'self' 'unsafe-inline'; object-sr
 两处要点：
 
 - `connect-src 'none'` — 页面内无法发起任何网络请求，这是"不联网"在浏览器层面的强制，而不只是代码里没写。
-- 沙箱页的 `script-src` 含 `'unsafe-inline'`。原因是：`sandbox.pages` 的页面运行在 unique origin 下，`'self'` 不匹配任何资源，否则打包脚本会被**静默阻止**。该页已由 `sandbox="allow-scripts"` 完全隔离，无法触达宿主，因此这里的放宽不产生跨边界风险。详见实现方案阶段 4 验证记录。
+- 沙箱页的 `script-src` 含 `'unsafe-inline'`。原因是：`sandbox.pages` 的页面运行在 unique origin 下，`'self'` 不匹配任何资源，否则打包脚本会被**静默阻止**。该页已由 `sandbox="allow-scripts"` 完全隔离，无法触达宿主，因此这里的放宽不产生跨边界风险。
 
 ## 已知限制
 

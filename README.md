@@ -32,7 +32,6 @@ pnpm build && pnpm test:e2e     # 真实 Microsoft Edge 加载生产扩展
 
 - **E2E 全程无窗口（headless）**：不打开可见浏览器，不抢焦点与键盘，运行期间可以照常使用电脑。
 - 每条用例使用系统临时目录里的独立浏览器 profile；trace 与失败截图也写到系统临时目录。仓库内 `artifacts/` 只保留 `e2e-results.json` 这类单文件报告。
-- 用例清单、筛选与重复运行的命令、手动验收步骤、当前进度与未完成清单，统一见 `docs/implementation-plan.md`。
 
 ## 能力概览
 
@@ -43,19 +42,10 @@ pnpm build && pnpm test:e2e     # 真实 Microsoft Edge 加载生产扩展
 - Workspace v2 校验 + IndexedDB 持久化、备份导入导出、本地壁纸与资源恢复。
 - 快捷方式显示站点真实图标（读浏览器已缓存的图标，无网络请求）；只有 `favicon` 一个权限，无 `host_permissions`，严格 CSP。
 
-## 文档
+## 权限与隐私
 
-| 文档 | 作用 |
-|---|---|
-| `docs/implementation-plan.md` | 进度与验收的唯一真相来源：阶段计划、已实现能力、测试运行方式、手动验收清单、验证记录、未完成清单 |
-| `docs/product-baseline-v1.md` | 需求基线 |
-| `docs/adr/0001-stage-0-foundation.md` | 阶段 0 技术决策 |
-| `docs/grid-state-machine.md` | 网格状态机与事务边界 |
-| `docs/compatibility-matrix.md` | 实际测试过的浏览器组合 |
-| `docs/privacy-and-permissions.md` | 权限与隐私说明 |
+扩展申请的权限、数据存放位置与网络行为见 [`docs/privacy-and-permissions.md`](docs/privacy-and-permissions.md)。
 
 ## 适用范围
 
-这是本机自用阶段的项目，不是发布版本：只实测过 Microsoft Edge，Chrome / Firefox / Safari 未验证；发布级无障碍与性能指标未验收。当前状态与差距以 `docs/implementation-plan.md` 为准。
-
-未获用户明确授权不执行 Git 提交、推送或发布。
+个人自用阶段的构建，不是发布版本：只实测过 Microsoft Edge，Chrome / Firefox / Safari 未验证；发布级无障碍与性能指标未验收。
