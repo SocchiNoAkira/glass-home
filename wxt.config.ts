@@ -7,10 +7,9 @@ export default defineConfig({
   manifest: {
     name: 'Glass Home',
     description: '本地优先的 Liquid Glass 风格主屏幕，时间、搜索、日历与快捷图标共享统一网格。',
-    // `favicon` is the narrowest way to show a site's icon: the browser serves
-    // it from the icons it already cached, so the extension itself makes no
-    // network request and reads no history. See src/infrastructure/favicon.
-    permissions: ['favicon'],
+    // `favicon` reads only cached site icons. `storage`, `alarms` and
+    // `notifications` power the local reminder widget without a server.
+    permissions: ['favicon', 'storage', 'alarms', 'notifications'],
     host_permissions: [],
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'none'; base-uri 'none';",

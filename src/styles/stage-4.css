@@ -144,6 +144,7 @@
    chose the dark palette over a light wallpaper. */
 [data-ink="dark"] .local-status--error,
 [data-ink="dark"] .todo-widget__notice,
+[data-ink="dark"] .reminder-widget__notice,
 [data-ink="dark"] .form-error,
 [data-ink="dark"] .edit-menu__item.is-dangerous { color: #883b3f; }
 [data-ink="dark"] .local-status--error .status-dot { background: #883b3f; }

@@ -13,7 +13,8 @@ export const WORKSPACE_SCHEMA_VERSION = 2;
 export const DEFAULT_WORKSPACE_ID = 'glass-home-workspace';
 /** v2 adds the to-do widget, so stored v1 data must be migrated on load. */
 export const TODO_WIDGET_ID = 'builtin.todo';
-export const BUILTIN_WIDGET_IDS = ['builtin.clock', 'builtin.search', 'builtin.calendar', TODO_WIDGET_ID] as const;
+export const REMINDER_WIDGET_ID = 'builtin.reminder';
+export const BUILTIN_WIDGET_IDS = ['builtin.clock', 'builtin.search', 'builtin.calendar', TODO_WIDGET_ID, REMINDER_WIDGET_ID] as const;
 
 export type MaterialQuality = 'high' | 'balanced' | 'low' | 'off';
 export type ThemePreference = 'system' | 'light' | 'dark';

@@ -6,6 +6,7 @@ import { ClockWidget } from '@/src/features/clock/ClockWidget';
 import { CalendarWidget } from '@/src/features/calendar/CalendarWidget';
 import { SearchWidget } from '@/src/features/search/SearchWidget';
 import { TodoWidget } from './TodoWidget';
+import { ReminderWidget } from './ReminderWidget';
 import { WidgetFrame, WidgetErrorCard } from './WidgetFrame';
 
 /**
@@ -70,6 +71,22 @@ export function WidgetHost({ item, workspace, environment, storage, widgetDataVe
     }
     return <WidgetFrame instanceId={item.instanceId} environment={environment}>
       <TodoWidget
+        instanceId={item.instanceId}
+        namespace={instance.storageNamespace}
+        storage={storage}
+        dataVersion={widgetDataVersion}
+        onError={(message) => onWidgetError(item.instanceId, message)}
+      />
+    </WidgetFrame>;
+  }
+  if (item.instanceId === 'builtin.reminder') {
+    if (!storage || !instance) {
+      return <WidgetFrame instanceId={item.instanceId} environment={environment}>
+        <WidgetErrorCard instanceId={item.instanceId} message="组件存储尚未就绪，请稍后重试。" />
+      </WidgetFrame>;
+    }
+    return <WidgetFrame instanceId={item.instanceId} environment={environment}>
+      <ReminderWidget
         instanceId={item.instanceId}
         namespace={instance.storageNamespace}
         storage={storage}

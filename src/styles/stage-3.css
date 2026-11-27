@@ -198,6 +198,67 @@
   .todo-widget__summary { display: none; }
 }
 
+/* Reminder widget: a local alarm with a short description. */
+.reminder-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 16px;
+  border-radius: 21px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.reminder-widget__summary { color: var(--text-soft); font-size: 10px; letter-spacing: .3px; }
+.reminder-widget__composer { display: grid; grid-template-columns: minmax(0, 1fr) 28px; gap: 6px; }
+.reminder-widget__text-input,
+.reminder-widget__time-input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid #ffffff26;
+  border-radius: 9px;
+  background: #ffffff0e;
+  color: var(--text);
+  font-size: 11px;
+}
+.reminder-widget__text-input { grid-column: 1 / -1; }
+.reminder-widget__time-input { color-scheme: dark; }
+.theme-light .reminder-widget__time-input { color-scheme: light; }
+.reminder-widget__text-input::placeholder { color: var(--text-soft); opacity: 1; }
+.reminder-widget__add { width: 28px; height: 28px; }
+.reminder-widget__list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.reminder-widget__item { display: flex; align-items: center; gap: 7px; min-height: 26px; }
+.reminder-widget__dot { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.reminder-widget__item.is-expired .reminder-widget__dot { background: var(--text-faint); }
+.reminder-widget__body { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.reminder-widget__title { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reminder-widget__time { font-size: 10px; color: var(--text-soft); }
+.reminder-widget__item.is-expired .reminder-widget__title { color: var(--text-soft); text-decoration: line-through; }
+.reminder-widget__remove {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  opacity: .8;
+}
+.reminder-widget__remove:hover { background: color-mix(in srgb, currentColor 14%, transparent); color: var(--text); opacity: 1; }
+.reminder-widget__empty { margin: 4px 0; color: var(--text-soft); font-size: 11px; line-height: 1.6; }
+.reminder-widget__notice { margin: 0; color: #f0b8c0; font-size: 10px; line-height: 1.5; }
+
 /* ---------------------------------------------------------------------------
  * Widget gallery (add / remove widgets).
  * iOS puts these behind a "+" while editing: one list of widget types, with an
@@ -214,5 +275,7 @@
 .widget-card__state { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
 @media (max-width: 719px) {
+  .reminder-widget { padding: 10px 12px; gap: 6px; }
+  .reminder-widget__summary { display: none; }
   .widget-card__text small { display: none; }
 }

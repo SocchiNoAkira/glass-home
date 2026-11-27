@@ -3,7 +3,7 @@ import { openDatabase, requestResult, transactionComplete, workspaceStore } from
 import { createBlankWorkspace, createDefaultWorkspace } from '@/src/domain/workspace/defaults';
 import { hasSeededShortcuts, markShortcutsSeeded } from './seedState';
 import { DEFAULT_WORKSPACE_ID, WORKSPACE_SCHEMA_VERSION, type Workspace, type WorkspaceAsset, type WorkspaceBackupWidgetRecord } from '@/src/domain/workspace/model';
-import { normalizeWidgetFootprints, normalizeWorkspace } from '@/src/domain/workspace/migration';
+import { normalizeBuiltinWidgets, normalizeWidgetFootprints, normalizeWorkspace } from '@/src/domain/workspace/migration';
 import { validateWorkspace } from '@/src/domain/workspace/schema';
 
 export type LoadWorkspaceResult =
@@ -55,10 +55,13 @@ export class WorkspaceRepository {
       if (!normalised.ok) return { status: 'recovery-required', message: normalised.reason };
       const validated = validateWorkspace(normalised.workspace);
       const resized = normalizeWidgetFootprints(validated);
-      if (normalised.migrated || resized.changed) await this.commit(resized.workspace);
+      const normalisedWidgets = normalizeBuiltinWidgets(resized.workspace);
+      if (normalised.migrated || resized.changed || normalisedWidgets.changed) {
+        await this.commit(normalisedWidgets.workspace);
+      }
       return normalised.migrated
-        ? { status: 'ready', workspace: resized.workspace, migrated: true }
-        : { status: 'ready', workspace: resized.workspace };
+        ? { status: 'ready', workspace: normalisedWidgets.workspace, migrated: true }
+        : { status: 'ready', workspace: normalisedWidgets.workspace };
     } catch (error) {
       return {
         status: 'recovery-required',
@@ -106,7 +109,7 @@ export class WorkspaceRepository {
     widgetData?: readonly WorkspaceBackupWidgetRecord[],
   ): Promise<void> {
     const operation = this.writeQueue.then(async () => {
-      const validated = validateWorkspace(normalizeWidgetFootprints(workspace).workspace);
+      const validated = validateWorkspace(normalizeBuiltinWidgets(normalizeWidgetFootprints(workspace).workspace).workspace);
       const database = await this.open();
       const stores = widgetData === undefined ? ['workspaces', 'assets'] as const : ALL_STORES;
       const transaction = database.transaction([...stores], 'readwrite');

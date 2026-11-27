@@ -1,4 +1,4 @@
-import { CalendarDays, Clock, ListTodo, Plus, Search } from 'lucide-react';
+import { BellPlus, CalendarDays, Clock, ListTodo, Plus, Search } from 'lucide-react';
 import { Modal } from '@/src/components/Modal';
 import { WIDGET_CATALOG, type BuiltinWidgetId } from '@/src/domain/widget/catalog';
 
@@ -7,6 +7,7 @@ const ICONS: Record<BuiltinWidgetId, typeof Clock> = {
   'builtin.search': Search,
   'builtin.calendar': CalendarDays,
   'builtin.todo': ListTodo,
+  'builtin.reminder': BellPlus,
 };
 
 /**

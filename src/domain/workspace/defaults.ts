@@ -4,6 +4,8 @@ import { SHORTCUT_SEEDS } from '@/src/features/home/data';
 import {
   BUILTIN_WIDGET_IDS,
   DEFAULT_WORKSPACE_ID,
+  REMINDER_WIDGET_ID,
+  TODO_WIDGET_ID,
   WORKSPACE_SCHEMA_VERSION,
   type Shortcut,
   type WidgetInstance,
@@ -61,22 +63,24 @@ export function createDefaultLayouts(shortcuts: readonly Shortcut[]): Record<Gri
       add(shortcut.id, 'shortcut', index % columns, firstShortcutRow + Math.floor(index / columns), index + 3);
     });
 
-    // The to-do widget is appended into the first free cell *after* every
-    // existing object, never in the middle of the accepted composition. The
-    // stage 3 migration uses the same first-fit rule, so a fresh workspace and
-    // an upgraded one end up with the widget in the same place.
-    rows.push({
-      instanceId: 'builtin.todo', kind: 'widget', breakpoint: columns,
-      locked: false, order: rows.length,
-      ...placeTodo(rows, columns),
-    });
+    // Storage-backed widgets are appended into the first free cell *after*
+    // every existing object, never in the middle of the accepted composition.
+    // The migration uses the same first-fit rule, so a fresh workspace and an
+    // upgraded one end up with the same layout.
+    for (const instanceId of [TODO_WIDGET_ID, REMINDER_WIDGET_ID]) {
+      rows.push({
+        instanceId, kind: 'widget', breakpoint: columns,
+        locked: false, order: rows.length,
+        ...placeWidget(rows, columns, instanceId),
+      });
+    }
 
     return [columns, rows.map((item) => widgets.some((widget) => widget.instanceId === item.instanceId) ? { ...item, kind: 'widget' } : item)];
   })) as Record<GridColumns, LayoutItem[]>;
 }
 
-function placeTodo(items: readonly LayoutItem[], columns: GridColumns): { x: number; y: number; w: number; h: number } {
-  const size = widgetCatalogEntry('builtin.todo')?.footprint[columns] ?? { w: 3, h: 2 };
+function placeWidget(items: readonly LayoutItem[], columns: GridColumns, instanceId: string): { x: number; y: number; w: number; h: number } {
+  const size = widgetCatalogEntry(instanceId)?.footprint[columns] ?? { w: 3, h: 2 };
   const spot = findFirstFit(items, size, columns);
   // `findFirstFit` scans one row past the content, so this always resolves on
   // an otherwise legal layout; the fallback keeps the type non-optional.

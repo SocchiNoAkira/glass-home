@@ -52,6 +52,12 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     description: '本地清单，回车添加，离线可用。',
     footprint: { 10: { w: 3, h: 2 }, 8: { w: 3, h: 2 }, 5: { w: 3, h: 2 } },
   },
+  {
+    widgetId: 'builtin.reminder',
+    label: '提醒事项',
+    description: '设定时间与内容，到点发出浏览器提醒。',
+    footprint: { 10: { w: 3, h: 2 }, 8: { w: 3, h: 2 }, 5: { w: 3, h: 2 } },
+  },
 ];
 
 export function isBuiltinWidgetId(value: string): value is BuiltinWidgetId {

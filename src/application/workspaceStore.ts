@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceRepository, type LoadWorkspaceResult } from '@/src/infrastructure/persistence/workspaceRepository';
 import { AssetRepository } from '@/src/infrastructure/persistence/assetRepository';
 import { WidgetStorage } from '@/src/infrastructure/persistence/widgetStorage';
-import type { Workspace, WorkspaceAsset, WorkspaceBackupWidgetRecord } from '@/src/domain/workspace/model';
+import { clearReminderSchedule } from '@/src/infrastructure/reminders/scheduler';
+import { REMINDER_WIDGET_ID, type Workspace, type WorkspaceAsset, type WorkspaceBackupWidgetRecord } from '@/src/domain/workspace/model';
 import type { GridColumns } from '@/src/domain/grid/model';
 import { DEFAULT_SOLVE_BUDGET, solveLayout, type LayoutCommand, type LayoutPreference } from '@/src/domain/grid/solver';
 import { applyLayoutTransaction, createLayoutPreview, restoreLayoutTransaction, type LayoutTransaction } from '@/src/domain/layout/transaction';
@@ -258,6 +259,7 @@ export function useWorkspace() {
     const storage = widgetStorageRef.current;
     if (!storage) throw new Error('组件存储尚未就绪，请稍后重试。');
     await enqueueCommitRef.current(() => storage.clearNamespace(namespace));
+    if (namespace === REMINDER_WIDGET_ID) await clearReminderSchedule();
     if (mountedRef.current) setWidgetDataVersion((version) => version + 1);
   }, []);
 
@@ -272,6 +274,7 @@ export function useWorkspace() {
     await enqueueCommitRef.current(async () => {
       await repositoryRef.current?.clear();
     });
+    await clearReminderSchedule();
     if (mountedRef.current) setWidgetDataVersion((version) => version + 1);
   }, []);
 

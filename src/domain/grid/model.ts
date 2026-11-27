@@ -70,6 +70,7 @@ export const BUILTIN_SIZE_CONSTRAINTS: Readonly<Record<string, SizeConstraint>> 
   'builtin.search': { presets: [[5, 1], [6, 1]], minW: 5, minH: 1, maxW: 6, maxH: 1 },
   'builtin.calendar': { presets: [[2, 2], [3, 2], [4, 2], [4, 4]], minW: 2, minH: 2, maxW: 4, maxH: 4 },
   'builtin.todo': { presets: [[2, 2], [3, 2], [4, 2], [4, 4]], minW: 2, minH: 2, maxW: 4, maxH: 4 },
+  'builtin.reminder': { presets: [[2, 2], [3, 2], [4, 2], [4, 4]], minW: 2, minH: 2, maxW: 4, maxH: 4 },
 };
 
 export function constraintsForItem(item: LayoutItem, constraints: LayoutConstraints = BUILTIN_SIZE_CONSTRAINTS): SizeConstraint {
